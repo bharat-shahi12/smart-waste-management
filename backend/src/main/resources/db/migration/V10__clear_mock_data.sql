@@ -1,0 +1,1 @@
+DELETE FROM dustbins WHERE device_id IN ('ESP32_001', 'ESP32_002', 'ESP32_003', 'ESP32_004', 'ESP32_005');

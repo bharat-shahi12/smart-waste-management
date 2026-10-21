@@ -1,0 +1,15 @@
+ALTER TABLE complaints 
+ADD COLUMN complaint_id VARCHAR(50) UNIQUE,
+ADD COLUMN latitude DOUBLE PRECISION,
+ADD COLUMN longitude DOUBLE PRECISION,
+ADD COLUMN rating INTEGER CHECK (rating >= 1 AND rating <= 5);
+
+CREATE TABLE complaint_updates (
+    id BIGSERIAL PRIMARY KEY,
+    complaint_id BIGINT NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_public BOOLEAN DEFAULT true,
+    created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

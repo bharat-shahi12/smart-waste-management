@@ -1,0 +1,10 @@
+CREATE TABLE alerts (
+    id BIGSERIAL PRIMARY KEY,
+    dustbin_id BIGINT REFERENCES dustbins(id) ON DELETE CASCADE,
+    alert_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(30) NOT NULL,
+    message TEXT,
+    is_resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);

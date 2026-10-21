@@ -1,0 +1,2 @@
+ALTER TABLE dustbins ADD COLUMN address VARCHAR(255);
+ALTER TABLE dustbins ADD COLUMN area_type VARCHAR(255);

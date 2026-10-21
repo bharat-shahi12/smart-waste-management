@@ -1,0 +1,21 @@
+CREATE TABLE dustbins (
+    id BIGSERIAL PRIMARY KEY,
+    device_id VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(150),
+    location_name TEXT,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    capacity_liters INTEGER,
+    fill_level DOUBLE PRECISION DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'EMPTY',
+    waste_type VARCHAR(50),
+    temperature DOUBLE PRECISION,
+    humidity DOUBLE PRECISION,
+    air_quality DOUBLE PRECISION,
+    moisture DOUBLE PRECISION,
+    battery_level DOUBLE PRECISION,
+    last_seen TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

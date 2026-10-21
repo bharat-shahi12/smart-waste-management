@@ -1,0 +1,5 @@
+ALTER TABLE users 
+ADD COLUMN saved_area VARCHAR(255),
+ADD COLUMN language VARCHAR(50) DEFAULT 'en',
+ADD COLUMN theme VARCHAR(50) DEFAULT 'dark',
+ADD COLUMN notifications_enabled BOOLEAN DEFAULT true;
