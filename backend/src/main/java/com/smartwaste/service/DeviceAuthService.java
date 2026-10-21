@@ -13,7 +13,7 @@ public class DeviceAuthService {
 
     private final DustbinRepository dustbinRepository;
 
-    @Value("${device.api.key:esp32_smartwaste_secret_key_2025}")
+    @Value("${device.api.key:}")
     private String globalDeviceApiKey;
 
     public DeviceAuthService(DustbinRepository dustbinRepository) {

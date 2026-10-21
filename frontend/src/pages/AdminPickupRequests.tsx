@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PickupRequest, User } from '../types';
-import api from '../services/api';
+import api, { getImageUrl } from '../services/api';
 import { 
   AlertCircle, MapPin, Calendar, User as UserIcon, 
   Truck, CheckCircle, Search, Filter, RefreshCw
@@ -394,7 +394,7 @@ export default function AdminPickupRequests() {
                 <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Uploaded Photo</p>
                   <img
-                    src={selectedRequest.imageUrl.startsWith('http') ? selectedRequest.imageUrl : `http://localhost:8081${selectedRequest.imageUrl}`}
+                    src={getImageUrl(selectedRequest.imageUrl)}
                     alt="Waste pickup photo"
                     className="w-full max-h-60 object-contain rounded-lg border bg-white"
                   />

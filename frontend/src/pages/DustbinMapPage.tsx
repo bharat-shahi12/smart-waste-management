@@ -73,7 +73,11 @@ export default function DustbinMapPage() {
   }, ['DUSTBIN', 'BIN', 'RECONNECTED']);
 
   useEffect(() => {
-    let result = dustbins;
+    let result = dustbins.filter(b => 
+      b.latitude != null && b.longitude != null &&
+      !isNaN(b.latitude) && !isNaN(b.longitude) &&
+      (Math.abs(b.latitude) > 0.0001 || Math.abs(b.longitude) > 0.0001)
+    );
     if (filter === 'AVAILABLE') result = result.filter(b => b.status === 'AVAILABLE');
     else if (filter === 'FULL') result = result.filter(b => b.status === 'FULL');
     else if (filter === 'OFFLINE') result = result.filter(b => b.status === 'OFFLINE');
@@ -135,7 +139,7 @@ export default function DustbinMapPage() {
             attribution='&copy; OpenStreetMap'
           />
           {filteredBins.map(bin => (
-            <Marker key={bin.id} position={[bin.latitude || 28.6139, bin.longitude || 77.2090]} icon={getMarkerIcon(bin.status)}>
+            <Marker key={bin.id} position={[bin.latitude, bin.longitude]} icon={getMarkerIcon(bin.status)}>
               <Popup>
                 <div className="p-1 min-w-[200px]">
                   <h4 className="font-bold text-lg">{bin.name}</h4>

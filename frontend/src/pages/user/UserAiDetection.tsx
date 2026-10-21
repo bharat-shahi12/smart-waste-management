@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Cpu, CheckCircle2, History, AlertTriangle, RefreshCw } from 'lucide-react';
-import api from '../../services/api';
+import api, { getImageUrl } from '../../services/api';
 import type { WasteDetection } from '../../types';
 import { useLiveRefresh } from '../../services/liveEvents';
 
@@ -162,7 +162,7 @@ export default function UserAiDetection() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {history.map(item => (
                     <div key={item.id} className="border border-gray-100 rounded-xl p-4 flex gap-4 hover:shadow-md transition">
-                        <img src={item.imageUrl.startsWith('http') ? item.imageUrl : `http://localhost:8081${item.imageUrl}`} alt={item.detectedCategory} className="w-20 h-20 object-cover rounded-lg shadow-sm" />
+                        <img src={getImageUrl(item.imageUrl)} alt={item.detectedCategory} className="w-20 h-20 object-cover rounded-lg shadow-sm" />
                         <div>
                             <h4 className="font-bold text-gray-900">{item.detectedCategory}</h4>
                             <p className="text-xs text-gray-500 mt-1">{item.confidence}% Confidence</p>

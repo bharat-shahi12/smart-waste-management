@@ -3,6 +3,7 @@ import lombok.Data;
 @Data
 public class SensorDataDto {
     private String deviceId;
+    private String apiKey;
     private Double fillLevel;
     private Double temperature;
     private Double humidity;

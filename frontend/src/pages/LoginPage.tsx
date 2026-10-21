@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, CheckSquare, Square } from 'lucide-react';
 
@@ -17,7 +17,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:8081/api/auth/login', { email, password });
+      const response = await api.post('/auth/login', { email, password });
       login(response.data.token, {
         id: response.data.userId,
         name: response.data.name,

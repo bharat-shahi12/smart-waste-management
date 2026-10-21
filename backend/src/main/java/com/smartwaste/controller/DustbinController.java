@@ -2,6 +2,7 @@ package com.smartwaste.controller;
 
 import com.smartwaste.entity.Dustbin;
 import com.smartwaste.repository.DustbinRepository;
+import com.smartwaste.repository.SensorReadingRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
@@ -16,12 +17,16 @@ import com.smartwaste.service.AssignmentService;
 public class DustbinController {
     
     private final DustbinRepository repository;
+    private final SensorReadingRepository sensorReadingRepository;
     private final AuditLogRepository auditLogRepository;
     private final RealtimePublisher realtimePublisher;
     private final AssignmentService assignmentService;
 
-    public DustbinController(DustbinRepository repository, AuditLogRepository auditLogRepository, RealtimePublisher realtimePublisher, AssignmentService assignmentService) {
+    public DustbinController(DustbinRepository repository, SensorReadingRepository sensorReadingRepository,
+                             AuditLogRepository auditLogRepository, RealtimePublisher realtimePublisher,
+                             AssignmentService assignmentService) {
         this.repository = repository;
+        this.sensorReadingRepository = sensorReadingRepository;
         this.auditLogRepository = auditLogRepository;
         this.realtimePublisher = realtimePublisher;
         this.assignmentService = assignmentService;
@@ -32,6 +37,30 @@ public class DustbinController {
         List<Dustbin> bins = repository.findAll();
         bins.forEach(this::updateStatusIfOffline);
         return bins;
+    }
+
+    @GetMapping("/nearby")
+    public List<Dustbin> getNearby(
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng,
+            @RequestParam(required = false, defaultValue = "5") Double radius) {
+        List<Dustbin> bins = repository.findAll();
+        bins.forEach(this::updateStatusIfOffline);
+        if (lat == null || lng == null) {
+            return bins;
+        }
+        return bins.stream().filter(b -> {
+            if (b.getLatitude() == null || b.getLongitude() == null) return false;
+            // Haversine formula distance approx in km
+            double dLat = Math.toRadians(b.getLatitude() - lat);
+            double dLng = Math.toRadians(b.getLongitude() - lng);
+            double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                       Math.cos(Math.toRadians(lat)) * Math.cos(Math.toRadians(b.getLatitude())) *
+                       Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            double dist = 6371 * c;
+            return dist <= radius;
+        }).toList();
     }
     
     @GetMapping("/{id}")
@@ -44,19 +73,28 @@ public class DustbinController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/{id}/history")
+    public ResponseEntity<List<com.smartwaste.entity.SensorReading>> getHistory(
+            @PathVariable Long id,
+            @RequestParam(value = "range", required = false, defaultValue = "24h") String range) {
+        List<com.smartwaste.entity.SensorReading> history = sensorReadingRepository.findTop100ByDustbinIdOrderByRecordedAtDesc(id);
+        return ResponseEntity.ok(history);
+    }
+
     private void updateStatusIfOffline(Dustbin dustbin) {
+        // Mark OFFLINE if no telemetry received within the last 5 minutes
         if (dustbin.getLastSeen() == null || 
-            dustbin.getLastSeen().isBefore(java.time.ZonedDateTime.now().minusMinutes(30))) {
+            dustbin.getLastSeen().isBefore(java.time.ZonedDateTime.now().minusMinutes(5))) {
             dustbin.setStatus("OFFLINE");
         }
     }
 
-
     @PostMapping
     public ResponseEntity<Dustbin> createDustbin(@RequestBody Dustbin dustbin, Authentication authentication) {
         dustbin.setLastSeen(java.time.ZonedDateTime.now());
+        // Generate a cryptographically unique device API key if none provided
         if (dustbin.getApiKey() == null || dustbin.getApiKey().isBlank()) {
-            dustbin.setApiKey("esp32_smartwaste_secret_key_2025");
+            dustbin.setApiKey("dvk_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24));
         }
         Dustbin saved = repository.save(dustbin);
         

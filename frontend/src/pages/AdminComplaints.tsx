@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Complaint } from '../types';
-import api from '../services/api';
+import api, { getImageUrl } from '../services/api';
 import { AlertCircle } from 'lucide-react';
 import { useLiveRefresh } from '../services/liveEvents';
 
@@ -95,7 +95,7 @@ export default function AdminComplaints() {
                 </div>
 
                 {selectedComplaint.imageUrl && (
-                    <img src={selectedComplaint.imageUrl.startsWith('http') ? selectedComplaint.imageUrl : `http://localhost:8081${selectedComplaint.imageUrl}`} alt="Evidence" className="w-full max-h-64 object-cover rounded-xl border" />
+                    <img src={getImageUrl(selectedComplaint.imageUrl)} alt="Evidence" className="w-full max-h-64 object-cover rounded-xl border" />
                 )}
 
                 <div className="bg-gray-50 p-4 rounded-xl border">

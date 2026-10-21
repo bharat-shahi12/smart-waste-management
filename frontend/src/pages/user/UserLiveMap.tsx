@@ -81,7 +81,11 @@ export default function UserLiveMap() {
   }, ['DUSTBIN', 'BIN', 'RECONNECTED']);
 
   useEffect(() => {
-    let result = dustbins;
+    let result = dustbins.filter(b => 
+      b.latitude != null && b.longitude != null &&
+      !isNaN(b.latitude) && !isNaN(b.longitude) &&
+      (Math.abs(b.latitude) > 0.0001 || Math.abs(b.longitude) > 0.0001)
+    );
     if (filter === 'AVAILABLE') result = result.filter(b => b.status === 'AVAILABLE');
     else if (filter === 'FULL') result = result.filter(b => b.status === 'FULL');
     else if (filter === 'OFFLINE') result = result.filter(b => b.status === 'OFFLINE');

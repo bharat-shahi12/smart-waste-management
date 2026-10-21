@@ -100,8 +100,10 @@ export default function ResponderMap() {
             attribution='&copy; OpenStreetMap'
             className="map-tiles-dark"
           />
-          {dustbins.map(bin => (
-            <Marker key={bin.id} position={[bin.latitude || 28.6139, bin.longitude || 77.2090]} icon={getMarkerIcon(bin.status)}>
+          {dustbins
+            .filter(bin => bin.latitude != null && bin.longitude != null && !isNaN(bin.latitude) && !isNaN(bin.longitude) && (Math.abs(bin.latitude) > 0.0001 || Math.abs(bin.longitude) > 0.0001))
+            .map(bin => (
+            <Marker key={bin.id} position={[bin.latitude, bin.longitude]} icon={getMarkerIcon(bin.status)}>
               <Popup className="custom-popup">
                 <div className="p-1 min-w-[200px] text-[#0F172A]">
                   <h4 className="font-bold text-lg">{bin.name}</h4>

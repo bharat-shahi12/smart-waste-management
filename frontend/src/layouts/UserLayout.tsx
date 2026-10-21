@@ -5,7 +5,7 @@ import {
   BarChart2, Lightbulb, Bell, Gift, TrendingUp, User as UserIcon, LogOut, Menu, X, Activity
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import api from '../services/api';
+import api, { WS_URL } from '../services/api';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { emitLive } from '../services/liveEvents';
@@ -36,7 +36,7 @@ export default function UserLayout() {
 
     let toastTimer: ReturnType<typeof setTimeout> | null = null;
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8081/ws'),
+      webSocketFactory: () => new SockJS(WS_URL),
       reconnectDelay: 3000,
       onConnect: () => {
         setLiveConnected(true);

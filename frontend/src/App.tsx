@@ -24,13 +24,14 @@ import UserAlerts from './pages/user/UserAlerts';
 import UserRewards from './pages/user/UserRewards';
 import UserSuggestions from './pages/user/UserSuggestions';
 import UserImpact from './pages/user/UserImpact';
-import PlaceholderPage from './pages/user/PlaceholderPage';
+import UserSmartBins from './pages/user/UserSmartBins';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 
 import ResponderDashboard from './pages/responder/ResponderDashboard';
 import ResponderAssignments from './pages/responder/ResponderAssignments';
 import ResponderMap from './pages/responder/ResponderMap';
 import ResponderProfile from './pages/responder/ResponderProfile';
+import ResponderNotifications from './pages/responder/ResponderNotifications';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?: string[] }) => {
   const { user, isAuthenticated, loading } = useAuth();
@@ -88,7 +89,7 @@ function AppRoutes() {
         <Route path="complaints" element={<ResponderAssignments />} />
         <Route path="pickups" element={<ResponderAssignments />} />
         <Route path="bin-alerts" element={<ResponderAssignments />} />
-        <Route path="notifications" element={<PlaceholderPage title="Responder Notifications" />} />
+        <Route path="notifications" element={<ResponderNotifications />} />
         <Route path="history" element={<ResponderAssignments />} />
         <Route path="profile" element={<ResponderProfile />} />
       </Route>
@@ -97,7 +98,7 @@ function AppRoutes() {
       <Route path="/user" element={<ProtectedRoute roles={['USER', 'ADMIN', 'AUTHORITY']}><UserLayout /></ProtectedRoute>}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<UserDashboard />} />
-        <Route path="bins" element={<PlaceholderPage title="Smart Bins" />} />
+        <Route path="bins" element={<UserSmartBins />} />
         <Route path="map" element={<UserLiveMap />} />
         <Route path="ai-detection" element={<UserAiDetection />} />
         <Route path="pickup" element={<UserPickupRequests />} />

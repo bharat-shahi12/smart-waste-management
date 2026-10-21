@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
 import { Trash2, AlertTriangle, Plus, X, CheckCircle, Truck, Calendar, Clock, MapPin, ArrowRight, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
@@ -104,7 +103,7 @@ export default function AdminDashboard() {
       setShowAddModal(false);
       setBinData({ name: '', deviceId: '', wasteType: 'MIXED', capacityLiters: 100, locationName: '', address: '', latitude: '', longitude: '', areaType: 'Residential' });
       // Refresh stats
-      const response = await axios.get('http://localhost:8081/api/analytics/dashboard').catch(() => ({data: stats}));
+      const response = await api.get('/analytics/dashboard').catch(() => ({data: stats}));
       setStats({...response.data, totalDustbins: response.data.totalDustbins + 1}); // Optimistic update
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err: any) {

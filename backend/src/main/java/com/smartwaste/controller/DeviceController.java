@@ -97,7 +97,11 @@ public class DeviceController {
 
         // 5. Calculate hardware feedback flags for ESP32 actuators
         boolean isFull = "FULL".equalsIgnoreCase(updatedBin.getStatus());
-        boolean hazardousAir = updatedBin.getAirQuality() != null && updatedBin.getAirQuality() > 200.0;
+        boolean hazardousAir = false;
+        if (updatedBin.getAirQuality() != null) {
+            double gasVal = updatedBin.getAirQuality();
+            hazardousAir = (gasVal >= 1000.0) ? (gasVal > 2500.0) : (gasVal > 200.0);
+        }
 
         String ledStatus;
         if (isFull || hazardousAir) {

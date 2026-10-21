@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { emitLive } from '../services/liveEvents';
+import { WS_URL } from '../services/api';
 
 export default function MainLayout() {
   const { user, logout } = useAuth();
@@ -16,7 +17,7 @@ export default function MainLayout() {
 
     let toastTimer: ReturnType<typeof setTimeout> | null = null;
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8081/ws'),
+      webSocketFactory: () => new SockJS(WS_URL),
       reconnectDelay: 3000,
       onConnect: () => {
         emitLive('RECONNECTED');

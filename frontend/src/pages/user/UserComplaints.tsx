@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Complaint } from '../../types';
 import { ClipboardList, Plus, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import api from '../../services/api';
+import api, { getImageUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useLiveRefresh } from '../../services/liveEvents';
 
@@ -74,7 +74,7 @@ export default function UserComplaints() {
             <div key={c.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between gap-4">
               <div className="flex gap-4">
                 {c.imageUrl && (
-                  <img src={c.imageUrl.startsWith('http') ? c.imageUrl : `http://localhost:8081${c.imageUrl}`} alt="Complaint" className="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-200" />
+                  <img src={getImageUrl(c.imageUrl)} alt="Complaint" className="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-200" />
                 )}
                 <div>
                   <div className="flex items-center space-x-3 mb-2">

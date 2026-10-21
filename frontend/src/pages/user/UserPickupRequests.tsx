@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PickupRequest } from '../../types';
 import { Truck, Plus, Clock, MapPin, Calendar, Image as ImageIcon, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
-import api from '../../services/api';
+import api, { getImageUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useLiveRefresh } from '../../services/liveEvents';
 
@@ -212,7 +212,7 @@ export default function UserPickupRequests() {
             <div key={r.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between gap-6 hover:shadow-md transition">
               <div className="flex gap-4 w-full">
                 {r.imageUrl ? (
-                  <img src={r.imageUrl.startsWith('http') ? r.imageUrl : `http://localhost:8081${r.imageUrl}`} alt="Pickup" className="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-200 hidden sm:block" />
+                  <img src={getImageUrl(r.imageUrl)} alt="Pickup" className="w-24 h-24 object-cover rounded-xl shadow-sm border border-gray-200 hidden sm:block" />
                 ) : (
                     <div className="w-24 h-24 bg-gray-50 rounded-xl border border-gray-100 hidden sm:flex items-center justify-center text-gray-400">
                         <ImageIcon className="w-8 h-8 opacity-50" />

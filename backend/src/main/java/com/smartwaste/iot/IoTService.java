@@ -12,6 +12,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.ZonedDateTime;
+import java.util.List;
 import com.smartwaste.service.NotificationService;
 
 @Service
@@ -21,7 +22,6 @@ public class IoTService {
     private final SensorReadingRepository sensorReadingRepository;
     private final AlertRepository alertRepository;
     private final SimpMessagingTemplate messagingTemplate;
-
     private final NotificationService notificationService;
 
     public IoTService(DustbinRepository dustbinRepository, SensorReadingRepository sensorReadingRepository,
@@ -40,109 +40,54 @@ public class IoTService {
                 .orElse(null);
         
         if (dustbin == null) {
-            // Can optionally create auto-registration here if needed
             throw new RuntimeException("Device not found: " + data.getDeviceId());
         }
 
-        // Update dustbin state
-        dustbin.setFillLevel(data.getFillLevel());
-        dustbin.setTemperature(data.getTemperature());
-        dustbin.setHumidity(data.getHumidity());
-        dustbin.setAirQuality(data.getGasLevel() != null ? data.getGasLevel() : data.getAirQuality());
-        dustbin.setMoisture(data.getMoisture());
-        dustbin.setBatteryLevel(data.getBatteryLevel());
+        // Safe null-handling and physical value clamping
+        if (data.getFillLevel() != null) {
+            dustbin.setFillLevel(clamp(data.getFillLevel(), 0.0, 100.0));
+        }
+        if (data.getTemperature() != null) {
+            dustbin.setTemperature(clamp(data.getTemperature(), -40.0, 85.0));
+        }
+        if (data.getHumidity() != null) {
+            dustbin.setHumidity(clamp(data.getHumidity(), 0.0, 100.0));
+        }
+        Double gas = data.getGasLevel() != null ? data.getGasLevel() : data.getAirQuality();
+        if (gas != null) {
+            dustbin.setAirQuality(Math.max(0.0, gas));
+        }
+        if (data.getMoisture() != null) {
+            dustbin.setMoisture(clamp(data.getMoisture(), 0.0, 100.0));
+        }
+        if (data.getBatteryLevel() != null) {
+            dustbin.setBatteryLevel(clamp(data.getBatteryLevel(), 0.0, 100.0));
+        }
         dustbin.setLastSeen(ZonedDateTime.now());
-        if (data.getLatitude() != null && data.getLongitude() != null) {
+
+        // Validate GPS coordinates: Ignore (0.0, 0.0) which occurs when GPS has no valid satellite fix
+        if (isValidCoordinate(data.getLatitude(), data.getLongitude())) {
             dustbin.setLatitude(data.getLatitude());
             dustbin.setLongitude(data.getLongitude());
         }
 
-        // Calculate Status (Available/Full based on 80% threshold)
-        if (data.getFillLevel() >= 80) dustbin.setStatus("FULL");
-        else dustbin.setStatus("AVAILABLE");
-        
-        // Calculate Waste Type (simplistic algorithm based on moisture)
-        if (data.getMoisture() != null) {
-            if (data.getMoisture() > 60) dustbin.setWasteType("WET");
-            else if (data.getMoisture() < 30) dustbin.setWasteType("DRY");
-            else dustbin.setWasteType("MIXED");
-        }
-
-        dustbinRepository.save(dustbin);
-
-        // Save History
-        SensorReading reading = new SensorReading();
-        reading.setDustbin(dustbin);
-        reading.setFillLevel(data.getFillLevel());
-        reading.setTemperature(data.getTemperature());
-        reading.setHumidity(data.getHumidity());
-        reading.setAirQuality(data.getAirQuality());
-        reading.setMoisture(data.getMoisture());
-        reading.setBatteryLevel(data.getBatteryLevel());
-        sensorReadingRepository.save(reading);
-
-        // Check Alerts
-        checkAlerts(dustbin);
-
-        // Broadcast to Dashboard
-        messagingTemplate.convertAndSend("/topic/dustbins", dustbin);
-        return dustbin;
-    }
-
-    @Transactional
-    public Dustbin processDeviceReading(Dustbin dustbin, DeviceReadingRequest request) {
-        // Compute fill level if raw distance is provided
-        Double fillLevel = request.getFillLevel();
-        if (fillLevel == null && request.getDistance() != null) {
-            double height = (request.getBinHeight() != null && request.getBinHeight() > 0) ? request.getBinHeight() : 100.0;
-            double calculated = ((height - request.getDistance()) / height) * 100.0;
-            fillLevel = Math.max(0.0, Math.min(100.0, calculated));
-        }
-
-        if (fillLevel != null) {
-            dustbin.setFillLevel(Math.round(Math.max(0.0, Math.min(100.0, fillLevel)) * 10.0) / 10.0);
-        }
-
-        if (request.getTemperature() != null) {
-            dustbin.setTemperature(request.getTemperature());
-        }
-        if (request.getHumidity() != null) {
-            dustbin.setHumidity(request.getHumidity());
-        }
-
-        Double gas = request.getGasLevel() != null ? request.getGasLevel() : request.getAirQuality();
-        if (gas != null) {
-            dustbin.setAirQuality(gas);
-        }
-        if (request.getMoisture() != null) {
-            dustbin.setMoisture(request.getMoisture());
-        }
-        if (request.getBatteryLevel() != null) {
-            dustbin.setBatteryLevel(request.getBatteryLevel());
-        }
-        dustbin.setLastSeen(ZonedDateTime.now());
-        if (request.getLatitude() != null && request.getLongitude() != null) {
-            dustbin.setLatitude(request.getLatitude());
-            dustbin.setLongitude(request.getLongitude());
-        }
-
-        // Calculate Status (Available/Full based on 80% threshold)
-        if (dustbin.getFillLevel() != null && dustbin.getFillLevel() >= 80) {
+        // Calculate Status (Available/Full based on 80% threshold, with null safety)
+        if (dustbin.getFillLevel() != null && dustbin.getFillLevel() >= 80.0) {
             dustbin.setStatus("FULL");
         } else {
             dustbin.setStatus("AVAILABLE");
         }
-
-        // Calculate Waste Type (simplistic algorithm based on moisture)
+        
+        // Calculate Waste Type (based on moisture sensor)
         if (dustbin.getMoisture() != null) {
-            if (dustbin.getMoisture() > 60) dustbin.setWasteType("WET");
-            else if (dustbin.getMoisture() < 30) dustbin.setWasteType("DRY");
+            if (dustbin.getMoisture() > 60.0) dustbin.setWasteType("WET");
+            else if (dustbin.getMoisture() < 30.0) dustbin.setWasteType("DRY");
             else dustbin.setWasteType("MIXED");
         }
 
         dustbinRepository.save(dustbin);
 
-        // Save History Log
+        // Save Historical Reading
         SensorReading reading = new SensorReading();
         reading.setDustbin(dustbin);
         reading.setFillLevel(dustbin.getFillLevel());
@@ -153,7 +98,7 @@ public class IoTService {
         reading.setBatteryLevel(dustbin.getBatteryLevel());
         sensorReadingRepository.save(reading);
 
-        // Check Alerts
+        // Deduplicated Alert Evaluation
         checkAlerts(dustbin);
 
         // Broadcast to WebSocket Dashboard
@@ -161,26 +106,151 @@ public class IoTService {
         return dustbin;
     }
 
+    @Transactional
+    public Dustbin processDeviceReading(Dustbin dustbin, DeviceReadingRequest request) {
+        // 1. Calculate fill level from ultrasonic distance if provided
+        Double fillLevel = request.getFillLevel();
+        if (fillLevel == null && request.getDistance() != null) {
+            double distance = request.getDistance();
+            // Validate distance: HC-SR04 measures ~2cm to 400cm
+            if (distance > 0.0 && distance <= 500.0) {
+                double height = (request.getBinHeight() != null && request.getBinHeight() > 0) ? request.getBinHeight() : 100.0;
+                double calculated = ((height - distance) / height) * 100.0;
+                fillLevel = clamp(calculated, 0.0, 100.0);
+            }
+        }
+
+        if (fillLevel != null) {
+            dustbin.setFillLevel(Math.round(clamp(fillLevel, 0.0, 100.0) * 10.0) / 10.0);
+        }
+
+        // 2. Telemetry physical bounds validation
+        if (request.getTemperature() != null) {
+            dustbin.setTemperature(clamp(request.getTemperature(), -40.0, 85.0));
+        }
+        if (request.getHumidity() != null) {
+            dustbin.setHumidity(clamp(request.getHumidity(), 0.0, 100.0));
+        }
+
+        Double gas = request.getGasLevel() != null ? request.getGasLevel() : request.getAirQuality();
+        if (gas != null) {
+            dustbin.setAirQuality(Math.max(0.0, gas));
+        }
+        if (request.getMoisture() != null) {
+            dustbin.setMoisture(clamp(request.getMoisture(), 0.0, 100.0));
+        }
+        if (request.getBatteryLevel() != null) {
+            dustbin.setBatteryLevel(clamp(request.getBatteryLevel(), 0.0, 100.0));
+        }
+        dustbin.setLastSeen(ZonedDateTime.now());
+
+        // Validate GPS fix (reject 0.0, 0.0 when NEO-6M has no satellite lock)
+        if (isValidCoordinate(request.getLatitude(), request.getLongitude())) {
+            dustbin.setLatitude(request.getLatitude());
+            dustbin.setLongitude(request.getLongitude());
+        }
+
+        // 3. Status determination
+        if (dustbin.getFillLevel() != null && dustbin.getFillLevel() >= 80.0) {
+            dustbin.setStatus("FULL");
+        } else {
+            dustbin.setStatus("AVAILABLE");
+        }
+
+        // 4. Waste classification
+        if (dustbin.getMoisture() != null) {
+            if (dustbin.getMoisture() > 60.0) dustbin.setWasteType("WET");
+            else if (dustbin.getMoisture() < 30.0) dustbin.setWasteType("DRY");
+            else dustbin.setWasteType("MIXED");
+        }
+
+        dustbinRepository.save(dustbin);
+
+        // 5. Save Historical Reading
+        SensorReading reading = new SensorReading();
+        reading.setDustbin(dustbin);
+        reading.setFillLevel(dustbin.getFillLevel());
+        reading.setTemperature(dustbin.getTemperature());
+        reading.setHumidity(dustbin.getHumidity());
+        reading.setAirQuality(dustbin.getAirQuality());
+        reading.setMoisture(dustbin.getMoisture());
+        reading.setBatteryLevel(dustbin.getBatteryLevel());
+        sensorReadingRepository.save(reading);
+
+        // 6. Deduplicated Alert Evaluation
+        checkAlerts(dustbin);
+
+        // 7. Broadcast to WebSocket Dashboard
+        messagingTemplate.convertAndSend("/topic/dustbins", dustbin);
+        return dustbin;
+    }
+
+    /**
+     * Evaluates alert conditions and prevents duplicate alert spam while conditions persist.
+     * Automatically resolves open alerts when conditions return to safe levels.
+     */
     private void checkAlerts(Dustbin dustbin) {
-        if ("FULL".equals(dustbin.getStatus())) {
-            createAlert(dustbin, "BIN_FULL", "HIGH", "Dustbin is full");
+        Long binId = dustbin.getId();
+
+        // --- 1. BIN_FULL Alert ---
+        boolean isFull = "FULL".equals(dustbin.getStatus()) || (dustbin.getFillLevel() != null && dustbin.getFillLevel() >= 80.0);
+        if (isFull) {
+            if (!alertRepository.existsByDustbinIdAndAlertTypeAndIsResolvedFalse(binId, "BIN_FULL")) {
+                createAlert(dustbin, "BIN_FULL", "HIGH", "Dustbin is full (" + dustbin.getFillLevel() + "%)");
+            }
+        } else if (dustbin.getFillLevel() != null && dustbin.getFillLevel() < 75.0) {
+            // Auto-resolve when bin has been emptied
+            resolveAlerts(binId, "BIN_FULL");
         }
-        
-        if (dustbin.getAirQuality() != null && dustbin.getAirQuality() > 200) {
-            createAlert(dustbin, "AIR_QUALITY", "HIGH", "Critical air quality / gas detected");
+
+        // --- 2. AIR_QUALITY / GAS Alert ---
+        // Handles both raw ADC readings (12-bit ADC 0-4095) and calibrated ppm (0-500 scale)
+        boolean hazardousGas = false;
+        if (dustbin.getAirQuality() != null) {
+            double gasVal = dustbin.getAirQuality();
+            if (gasVal >= 1000.0) {
+                // Raw ADC value: clean air ~400-800, threshold > 2500 indicates smoke/gas presence
+                hazardousGas = gasVal > 2500.0;
+            } else {
+                // Calibrated ppm / AQI scale: threshold > 200 indicates hazardous air
+                hazardousGas = gasVal > 200.0;
+            }
         }
-        
-        if (dustbin.getBatteryLevel() != null && dustbin.getBatteryLevel() < 15) {
-            createAlert(dustbin, "LOW_BATTERY", "MEDIUM", "Device battery is low");
+
+        if (hazardousGas) {
+            if (!alertRepository.existsByDustbinIdAndAlertTypeAndIsResolvedFalse(binId, "AIR_QUALITY")) {
+                createAlert(dustbin, "AIR_QUALITY", "HIGH", "Hazardous gas reading detected (" + dustbin.getAirQuality() + ")");
+            }
+        } else if (dustbin.getAirQuality() != null && dustbin.getAirQuality() < 150.0) {
+            resolveAlerts(binId, "AIR_QUALITY");
+        }
+
+        // --- 3. LOW_BATTERY Alert ---
+        if (dustbin.getBatteryLevel() != null && dustbin.getBatteryLevel() < 15.0) {
+            if (!alertRepository.existsByDustbinIdAndAlertTypeAndIsResolvedFalse(binId, "LOW_BATTERY")) {
+                createAlert(dustbin, "LOW_BATTERY", "MEDIUM", "Device battery is critically low (" + dustbin.getBatteryLevel() + "%)");
+            }
+        } else if (dustbin.getBatteryLevel() != null && dustbin.getBatteryLevel() > 30.0) {
+            resolveAlerts(binId, "LOW_BATTERY");
         }
     }
-    
+
+    private void resolveAlerts(Long binId, String alertType) {
+        List<Alert> active = alertRepository.findByDustbinIdAndAlertTypeAndIsResolvedFalse(binId, alertType);
+        for (Alert a : active) {
+            a.setIsResolved(true);
+            a.setResolvedAt(ZonedDateTime.now());
+            alertRepository.save(a);
+        }
+    }
+
     private void createAlert(Dustbin dustbin, String type, String severity, String message) {
         Alert alert = new Alert();
         alert.setDustbin(dustbin);
         alert.setAlertType(type);
         alert.setSeverity(severity);
         alert.setMessage(message);
+        alert.setIsResolved(false);
         alertRepository.save(alert);
         messagingTemplate.convertAndSend("/topic/alerts", alert);
 
@@ -189,8 +259,22 @@ public class IoTService {
             title = "Bin Full Warning";
         } else if ("AIR_QUALITY".equals(type)) {
             title = "Environmental Warning";
+        } else if ("LOW_BATTERY".equals(type)) {
+            title = "Battery Warning";
         }
-        
+
         notificationService.createNotification(null, type, title, message + " (Bin: " + dustbin.getName() + ")", "Dustbin", dustbin.getId().toString());
+    }
+
+    private double clamp(double val, double min, double max) {
+        return Math.max(min, Math.min(max, val));
+    }
+
+    private boolean isValidCoordinate(Double lat, Double lng) {
+        if (lat == null || lng == null) return false;
+        if (Double.isNaN(lat) || Double.isNaN(lng)) return false;
+        // Check for (0.0, 0.0) which is commonly emitted by NEO-6M before lock
+        if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) return false;
+        return lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0;
     }
 }
