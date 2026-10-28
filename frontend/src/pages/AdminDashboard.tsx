@@ -12,6 +12,7 @@ import api from '../services/api';
 import { dustbinService } from '../services/dustbinService';
 import { useLiveRefresh } from '../services/liveEvents';
 import type { PickupRequest, Dustbin } from '../types';
+import LiveDustbin from '../components/LiveDustbin';
 
 // Fix Leaflet's default icon issue
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -396,6 +397,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Real-time Firebase Telemetry Box */}
+      <LiveDustbin />
 
       {/* Environment Overview & Weekly Trends */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

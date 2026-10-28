@@ -5,6 +5,7 @@ import { useLiveRefresh } from '../../services/liveEvents';
 import { subscribeToAllLiveDustbins } from '../../services/firebaseDustbinService';
 import { Trash2, Search, Filter, Battery, Thermometer, Droplets, Wind, MapPin, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import LiveDustbin from '../../components/LiveDustbin';
 
 export default function UserSmartBins() {
   const [bins, setBins] = useState<Dustbin[]>([]);
@@ -116,6 +117,9 @@ export default function UserSmartBins() {
           Refresh
         </button>
       </div>
+
+      {/* Live IoT Sensor Box */}
+      <LiveDustbin />
 
       {/* Search & Filter Bar */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4">
