@@ -14,6 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZonedDateTime;
 import java.util.List;
 import com.smartwaste.service.NotificationService;
+import com.smartwaste.service.FirebaseRealtimeService;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class IoTService {
@@ -23,15 +26,18 @@ public class IoTService {
     private final AlertRepository alertRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
+    private final FirebaseRealtimeService firebaseRealtimeService;
 
     public IoTService(DustbinRepository dustbinRepository, SensorReadingRepository sensorReadingRepository,
                       AlertRepository alertRepository, SimpMessagingTemplate messagingTemplate,
-                      NotificationService notificationService) {
+                      NotificationService notificationService,
+                      FirebaseRealtimeService firebaseRealtimeService) {
         this.dustbinRepository = dustbinRepository;
         this.sensorReadingRepository = sensorReadingRepository;
         this.alertRepository = alertRepository;
         this.messagingTemplate = messagingTemplate;
         this.notificationService = notificationService;
+        this.firebaseRealtimeService = firebaseRealtimeService;
     }
 
     @Transactional
@@ -85,7 +91,32 @@ public class IoTService {
             else dustbin.setWasteType("MIXED");
         }
 
-        dustbinRepository.save(dustbin);
+        Dustbin savedBin = dustbinRepository.save(dustbin);
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        firebaseRealtimeService.publishLatest(savedBin)
+                            .exceptionally(error -> {
+                                System.err.println(
+                                    "Firebase publish failed: " + error.getMessage()
+                                );
+                                return null;
+                            });
+                    }
+                }
+            );
+        } else {
+            firebaseRealtimeService.publishLatest(savedBin)
+                .exceptionally(error -> {
+                    System.err.println(
+                        "Firebase publish failed: " + error.getMessage()
+                    );
+                    return null;
+                });
+        }
 
         // Save Historical Reading
         SensorReading reading = new SensorReading();
@@ -164,7 +195,32 @@ public class IoTService {
             else dustbin.setWasteType("MIXED");
         }
 
-        dustbinRepository.save(dustbin);
+        Dustbin savedBin = dustbinRepository.save(dustbin);
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        firebaseRealtimeService.publishLatest(savedBin)
+                            .exceptionally(error -> {
+                                System.err.println(
+                                    "Firebase publish failed: " + error.getMessage()
+                                );
+                                return null;
+                            });
+                    }
+                }
+            );
+        } else {
+            firebaseRealtimeService.publishLatest(savedBin)
+                .exceptionally(error -> {
+                    System.err.println(
+                        "Firebase publish failed: " + error.getMessage()
+                    );
+                    return null;
+                });
+        }
 
         // 5. Save Historical Reading
         SensorReading reading = new SensorReading();
