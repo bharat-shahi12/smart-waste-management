@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { PickupRequest } from '../../types';
-import { Truck, Plus, Clock, MapPin, Calendar, Image as ImageIcon, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Truck, Plus, Clock, MapPin, Calendar, Image as ImageIcon, CheckCircle, AlertCircle, RefreshCw, Navigation } from 'lucide-react';
 import api, { getImageUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useLiveRefresh } from '../../services/liveEvents';
+import LivePickupTrackerModal from '../../components/LivePickupTrackerModal';
 
 export default function UserPickupRequests() {
   const [requests, setRequests] = useState<PickupRequest[]>([]);
@@ -11,6 +12,7 @@ export default function UserPickupRequests() {
   const [showForm, setShowForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [trackingPickupId, setTrackingPickupId] = useState<number | string | null>(null);
   const { user } = useAuth();
   
   const [formData, setFormData] = useState({
@@ -219,9 +221,23 @@ export default function UserPickupRequests() {
                     </div>
                 )}
                 <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="font-mono text-sm text-gray-800 font-bold bg-gray-100 px-2 py-0.5 rounded">{r.pickupId}</span>
-                    {getStatusBadge(r.status)}
+                  <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                    <div className="flex items-center space-x-3">
+                      <span className="font-mono text-sm text-gray-800 font-bold bg-gray-100 px-2 py-0.5 rounded">{r.pickupId}</span>
+                      {getStatusBadge(r.status)}
+                    </div>
+
+                    {['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'ARRIVED'].includes(r.status) && (
+                      <button
+                        id={`btn-track-pickup-${r.id}`}
+                        data-testid="track-collector-btn"
+                        onClick={() => setTrackingPickupId(r.id)}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <Navigation className="w-3.5 h-3.5 animate-pulse" />
+                        <span>Track Live Collector</span>
+                      </button>
+                    )}
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                     {r.wasteType} 
@@ -251,6 +267,13 @@ export default function UserPickupRequests() {
             </div>
           ))}
         </div>
+      )}
+
+      {trackingPickupId && (
+        <LivePickupTrackerModal
+          pickupId={trackingPickupId}
+          onClose={() => setTrackingPickupId(null)}
+        />
       )}
     </div>
   );

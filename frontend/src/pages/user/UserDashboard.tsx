@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { PlusCircle, Target, Clock, Recycle, ChevronDown, MapPin, Truck, CheckCircle, X, Calendar, AlertCircle } from 'lucide-react';
+import { PlusCircle, Target, Clock, Recycle, ChevronDown, MapPin, Truck, CheckCircle, X, Calendar, AlertCircle, Navigation } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { dustbinService } from '../../services/dustbinService';
 import type { Dustbin, PickupRequest } from '../../types';
 import { useLiveRefresh } from '../../services/liveEvents';
 import { useAuth } from '../../context/AuthContext';
+import LivePickupTrackerModal from '../../components/LivePickupTrackerModal';
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [dustbins, setDustbins] = useState<Dustbin[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [trackingPickupId, setTrackingPickupId] = useState<number | string | null>(null);
   const goal = 20; // 20kg goal
 
   // Pickup Request Modal State
@@ -596,6 +598,18 @@ export default function UserDashboard() {
                       "{pickup.notes}"
                     </p>
                   )}
+
+                  {['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'ARRIVED'].includes(pickup.status) && (
+                    <button
+                      id={`btn-track-dashboard-pickup-${pickup.id}`}
+                      data-testid="track-collector-dashboard-btn"
+                      onClick={() => setTrackingPickupId(pickup.id)}
+                      className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all hover:scale-[1.01]"
+                    >
+                      <Navigation className="w-3.5 h-3.5 animate-pulse" />
+                      <span>Track Live Collector</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -645,6 +659,13 @@ export default function UserDashboard() {
            <div className="text-center text-[#A9A5BA] text-sm py-4">No bins found.</div>
          )}
       </div>
+
+      {trackingPickupId && (
+        <LivePickupTrackerModal
+          pickupId={trackingPickupId}
+          onClose={() => setTrackingPickupId(null)}
+        />
+      )}
     </div>
   );
 }

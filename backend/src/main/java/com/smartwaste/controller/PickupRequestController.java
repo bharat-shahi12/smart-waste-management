@@ -93,4 +93,16 @@ public class PickupRequestController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.smartwaste.service.AssignmentService assignmentService;
+
+    @GetMapping("/{id}/tracking")
+    public ResponseEntity<?> getTracking(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(assignmentService.getTrackingForPickup(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

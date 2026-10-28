@@ -62,6 +62,21 @@ public class Assignment {
     @Column(name = "proof_image")
     private String proofImage;
 
+    @Column(name = "responder_latitude")
+    private Double responderLatitude;
+
+    @Column(name = "responder_longitude")
+    private Double responderLongitude;
+
+    @Column(name = "responder_location_name")
+    private String responderLocationName;
+
+    @Column(name = "responder_eta_minutes")
+    private Integer responderEtaMinutes;
+
+    @Column(name = "responder_updated_at")
+    private ZonedDateTime responderUpdatedAt;
+
     @Column(name = "created_at", updatable = false)
     private ZonedDateTime createdAt;
 

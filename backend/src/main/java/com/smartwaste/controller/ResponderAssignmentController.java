@@ -76,11 +76,35 @@ public class ResponderAssignmentController {
                                           @RequestParam("status") String status,
                                           @RequestParam(value = "note", required = false) String note,
                                           @RequestParam(value = "proofImage", required = false) MultipartFile proofImage,
+                                          @RequestParam(value = "latitude", required = false) Double latitude,
+                                          @RequestParam(value = "longitude", required = false) Double longitude,
+                                          @RequestParam(value = "locationName", required = false) String locationName,
+                                          @RequestParam(value = "etaMinutes", required = false) Integer etaMinutes,
                                           Authentication authentication) {
         try {
             User responder = currentUserService.from(authentication);
             String photoUrl = saveImage(proofImage);
-            Assignment updated = assignmentService.updateAssignmentStatus(id, responder.getId(), status, note, photoUrl);
+            Assignment updated = assignmentService.updateAssignmentStatus(
+                id, responder.getId(), status, note, photoUrl, latitude, longitude, locationName, etaMinutes
+            );
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/location")
+    public ResponseEntity<?> updateLocation(@PathVariable Long id,
+                                            @RequestBody Map<String, Object> body,
+                                            Authentication authentication) {
+        try {
+            User responder = currentUserService.from(authentication);
+            Double lat = body.get("latitude") != null ? Double.valueOf(body.get("latitude").toString()) : null;
+            Double lng = body.get("longitude") != null ? Double.valueOf(body.get("longitude").toString()) : null;
+            String locationName = (String) body.get("locationName");
+            Integer eta = body.get("etaMinutes") != null ? Integer.valueOf(body.get("etaMinutes").toString()) : null;
+
+            Assignment updated = assignmentService.updateResponderLocation(id, responder.getId(), lat, lng, locationName, eta);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

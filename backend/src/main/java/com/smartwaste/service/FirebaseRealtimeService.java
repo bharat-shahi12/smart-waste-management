@@ -79,4 +79,33 @@ public class FirebaseRealtimeService {
 
         return completableFuture;
     }
+
+    public CompletableFuture<Void> publishPickupTracking(String pickupId, Map<String, Object> trackingData) {
+        if (database == null || pickupId == null || pickupId.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+        DatabaseReference reference = database
+                .getReference("livePickups")
+                .child(pickupId);
+
+        log.info("📡 Publishing live pickup tracking for '{}' to Firebase RTDB at livePickups/{} ...", 
+                pickupId, pickupId);
+
+        reference.setValue(trackingData, new DatabaseReference.CompletionListener() {
+            @Override
+            public void onComplete(DatabaseError error, DatabaseReference ref) {
+                if (error != null) {
+                    log.error("❌ Firebase RTDB tracking write failed for pickup {}: {}", pickupId, error.getMessage());
+                    completableFuture.completeExceptionally(error.toException());
+                } else {
+                    log.info("✅ Firebase RTDB tracking SUCCESS for pickup {} at path: {}", pickupId, ref.getPath());
+                    completableFuture.complete(null);
+                }
+            }
+        });
+
+        return completableFuture;
+    }
 }
