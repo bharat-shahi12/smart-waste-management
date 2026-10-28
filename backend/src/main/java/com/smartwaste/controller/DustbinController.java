@@ -9,9 +9,13 @@ import org.springframework.security.core.Authentication;
 import com.smartwaste.repository.AuditLogRepository;
 import com.smartwaste.entity.AuditLog;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.smartwaste.websocket.RealtimePublisher;
 import com.smartwaste.service.AssignmentService;
+import com.smartwaste.service.FirebaseRealtimeService;
 
 @RestController
 @RequestMapping("/api/dustbins")
@@ -23,16 +27,19 @@ public class DustbinController {
     private final RealtimePublisher realtimePublisher;
     private final AssignmentService assignmentService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FirebaseRealtimeService firebaseRealtimeService;
 
     public DustbinController(DustbinRepository repository, SensorReadingRepository sensorReadingRepository,
                              AuditLogRepository auditLogRepository, RealtimePublisher realtimePublisher,
-                             AssignmentService assignmentService, SimpMessagingTemplate messagingTemplate) {
+                             AssignmentService assignmentService, SimpMessagingTemplate messagingTemplate,
+                             @Autowired(required = false) FirebaseRealtimeService firebaseRealtimeService) {
         this.repository = repository;
         this.sensorReadingRepository = sensorReadingRepository;
         this.auditLogRepository = auditLogRepository;
         this.realtimePublisher = realtimePublisher;
         this.assignmentService = assignmentService;
         this.messagingTemplate = messagingTemplate;
+        this.firebaseRealtimeService = firebaseRealtimeService;
     }
 
     @GetMapping
@@ -206,6 +213,124 @@ public class DustbinController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
         }
+    }
+
+    @PostMapping("/set-main-location")
+    public ResponseEntity<Dustbin> setMainLocation(@RequestBody Map<String, Object> payload, Authentication authentication) {
+        Double lat = payload.get("latitude") != null ? Double.valueOf(payload.get("latitude").toString()) : null;
+        Double lng = payload.get("longitude") != null ? Double.valueOf(payload.get("longitude").toString()) : null;
+        String address = (String) payload.get("address");
+        String locationName = (String) payload.get("locationName");
+
+        if (lat == null || lng == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // Find main dustbin ESP32_1001 (or first registered dustbin)
+        Dustbin mainBin = repository.findByDeviceId("ESP32_1001")
+                .or(() -> repository.findAll().stream().findFirst())
+                .orElse(null);
+
+        if (mainBin == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        mainBin.setLatitude(lat);
+        mainBin.setLongitude(lng);
+        if (address != null && !address.isBlank()) mainBin.setAddress(address);
+        if (locationName != null && !locationName.isBlank()) mainBin.setLocationName(locationName);
+        mainBin.setLastSeen(java.time.ZonedDateTime.now());
+
+        Dustbin saved = repository.save(mainBin);
+        logAudit("UPDATE_LOCATION", "Dustbin", saved.getId(), "Set main dustbin coordinates to " + lat + ", " + lng, authentication);
+
+        messagingTemplate.convertAndSend("/topic/dustbins", saved);
+        realtimePublisher.globalActivity("BIN", Map.of(
+            "action", "UPDATE",
+            "binId", saved.getId(),
+            "name", saved.getName() != null ? saved.getName() : ""
+        ));
+
+        if (firebaseRealtimeService != null) {
+            try {
+                firebaseRealtimeService.publishLatest(saved);
+            } catch (Exception ignored) {}
+        }
+
+        return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/seed-mock")
+    public ResponseEntity<List<Dustbin>> seedMockBins(@RequestBody(required = false) Map<String, Object> coords, Authentication authentication) {
+        double centerLat = 28.555467;
+        double centerLng = 77.325600;
+
+        if (coords != null && coords.get("latitude") != null && coords.get("longitude") != null) {
+            centerLat = Double.valueOf(coords.get("latitude").toString());
+            centerLng = Double.valueOf(coords.get("longitude").toString());
+        } else {
+            Dustbin mainBin = repository.findByDeviceId("ESP32_1001").orElse(null);
+            if (mainBin != null && mainBin.getLatitude() != null && mainBin.getLongitude() != null) {
+                centerLat = mainBin.getLatitude();
+                centerLng = mainBin.getLongitude();
+            }
+        }
+
+        double[][] offsets = {
+            { 0.0035,  0.0042},
+            {-0.0041,  0.0028},
+            { 0.0062, -0.0033},
+            {-0.0028, -0.0055},
+            { 0.0019, -0.0071},
+            {-0.0075,  0.0018},
+            { 0.0082,  0.0064},
+            {-0.0053, -0.0042}
+        };
+
+        String[] names = {
+            "Central Park Eco-Station",
+            "Tech Boulevard Smart Hub",
+            "Metro Junction Recycler",
+            "Market Square Waste Pod",
+            "City Hospital Gate #3",
+            "University Campus Quad",
+            "Residential Enclave B4",
+            "Green Horizon Plaza"
+        };
+
+        String[] wasteTypes = {"DRY", "WET", "MIXED", "RECYCLABLE", "DRY", "WET", "MIXED", "RECYCLABLE"};
+        double[] fillLevels = {18.0, 45.0, 88.0, 94.0, 32.0, 64.0, 78.0, 12.0};
+        String[] statuses = {"AVAILABLE", "AVAILABLE", "FULL", "FULL", "AVAILABLE", "AVAILABLE", "AVAILABLE", "AVAILABLE"};
+
+        List<Dustbin> seeded = new ArrayList<>();
+        for (int i = 0; i < offsets.length; i++) {
+            String devId = "ESP32_MOCK_" + (100 + i);
+            Dustbin bin = repository.findByDeviceId(devId).orElse(new Dustbin());
+            bin.setDeviceId(devId);
+            bin.setName(names[i]);
+            bin.setLocationName(names[i] + " Sector");
+            bin.setAddress("Zone " + (i + 1) + ", Eco Smart District");
+            bin.setLatitude(Math.round((centerLat + offsets[i][0]) * 100000.0) / 100000.0);
+            bin.setLongitude(Math.round((centerLng + offsets[i][1]) * 100000.0) / 100000.0);
+            bin.setCapacityLiters(120);
+            bin.setFillLevel(fillLevels[i]);
+            bin.setStatus(statuses[i]);
+            bin.setWasteType(wasteTypes[i]);
+            bin.setTemperature(24.0 + (i % 5));
+            bin.setHumidity(50.0 + (i * 2));
+            bin.setAirQuality(250.0 + (i * 40));
+            bin.setIsActive(true);
+            bin.setLastSeen(java.time.ZonedDateTime.now());
+            if (bin.getApiKey() == null) {
+                bin.setApiKey("dvk_mock_" + (100 + i));
+            }
+            Dustbin saved = repository.save(bin);
+            seeded.add(saved);
+            messagingTemplate.convertAndSend("/topic/dustbins", saved);
+        }
+
+        logAudit("SEED_MOCK", "Dustbin", 0L, "Seeded 8 mock smart dustbins around " + centerLat + ", " + centerLng, authentication);
+        return ResponseEntity.ok(seeded);
     }
 
     private void logAudit(String action, String entityName, Long entityId, String details, Authentication authentication) {
