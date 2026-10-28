@@ -5,6 +5,7 @@ import type { Dustbin  } from '../../types';
 import { Battery, Thermometer, Droplets, Wind, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useLiveRefresh } from '../../services/liveEvents';
+import { subscribeToLiveDustbin } from '../../services/firebaseDustbinService';
 
 export default function UserDustbinDetails() {
   const { id } = useParams<{id: string}>();
@@ -33,6 +34,28 @@ export default function UserDustbinDetails() {
   useEffect(() => {
     fetchBin();
   }, [id]);
+
+  // Firebase Realtime Database direct subscription
+  useEffect(() => {
+    if (!bin?.deviceId) return;
+
+    const unsubscribe = subscribeToLiveDustbin(bin.deviceId, (reading) => {
+      if (!reading) return;
+      setBin(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          fillLevel: reading.fillLevel != null ? reading.fillLevel : prev.fillLevel,
+          temperature: reading.temperature != null ? reading.temperature : prev.temperature,
+          humidity: reading.humidity != null ? reading.humidity : prev.humidity,
+          airQuality: reading.airQuality != null ? reading.airQuality : prev.airQuality,
+          status: (reading.status as any) || prev.status,
+        };
+      });
+    });
+
+    return () => unsubscribe();
+  }, [bin?.deviceId]);
 
   useLiveRefresh((_, payload: any) => {
     if (payload && payload.id === Number(id)) {

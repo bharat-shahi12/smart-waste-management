@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Dustbin } from '../../types';
 import { dustbinService } from '../../services/dustbinService';
 import { useLiveRefresh } from '../../services/liveEvents';
+import { subscribeToAllLiveDustbins } from '../../services/firebaseDustbinService';
 import { Trash2, Search, Filter, Battery, Thermometer, Droplets, Wind, MapPin, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -26,6 +27,27 @@ export default function UserSmartBins() {
 
   useEffect(() => {
     fetchBins();
+  }, []);
+
+  // Firebase Realtime Database direct fleet subscription
+  useEffect(() => {
+    const unsubscribe = subscribeToAllLiveDustbins((readings) => {
+      if (!readings || Object.keys(readings).length === 0) return;
+      setBins(prev => prev.map(bin => {
+        const reading = readings[bin.deviceId];
+        if (!reading) return bin;
+        return {
+          ...bin,
+          fillLevel: reading.fillLevel != null ? reading.fillLevel : bin.fillLevel,
+          temperature: reading.temperature != null ? reading.temperature : bin.temperature,
+          humidity: reading.humidity != null ? reading.humidity : bin.humidity,
+          airQuality: reading.airQuality != null ? reading.airQuality : bin.airQuality,
+          status: (reading.status as any) || bin.status,
+        };
+      }));
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useLiveRefresh(() => {
