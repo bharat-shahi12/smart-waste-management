@@ -31,16 +31,17 @@ public class FirebaseConfig {
         }
 
         try (FileInputStream stream = new FileInputStream(keyPath)) {
+            System.out.println("🔥 Initializing Firebase with URL: [" + databaseUrl + "] and key: [" + keyPath + "]");
             FirebaseOptions.Builder builder = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.fromStream(stream));
 
             if (databaseUrl != null && !databaseUrl.isBlank()) {
-                builder.setDatabaseUrl(databaseUrl);
+                builder.setDatabaseUrl(databaseUrl.trim());
             }
 
             FirebaseOptions options = builder.build();
             FirebaseApp app = FirebaseApp.initializeApp(options);
-            System.out.println("✅ Firebase initialized successfully: " + app.getName());
+            System.out.println("✅ Firebase initialized successfully: " + app.getName() + " with database URL: " + app.getOptions().getDatabaseUrl());
             return app;
         }
     }
