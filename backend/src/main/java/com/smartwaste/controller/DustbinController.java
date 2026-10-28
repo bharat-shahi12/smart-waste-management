@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import com.smartwaste.repository.AuditLogRepository;
 import com.smartwaste.entity.AuditLog;
 import java.util.List;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.smartwaste.websocket.RealtimePublisher;
 import com.smartwaste.service.AssignmentService;
 
@@ -21,15 +22,17 @@ public class DustbinController {
     private final AuditLogRepository auditLogRepository;
     private final RealtimePublisher realtimePublisher;
     private final AssignmentService assignmentService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public DustbinController(DustbinRepository repository, SensorReadingRepository sensorReadingRepository,
                              AuditLogRepository auditLogRepository, RealtimePublisher realtimePublisher,
-                             AssignmentService assignmentService) {
+                             AssignmentService assignmentService, SimpMessagingTemplate messagingTemplate) {
         this.repository = repository;
         this.sensorReadingRepository = sensorReadingRepository;
         this.auditLogRepository = auditLogRepository;
         this.realtimePublisher = realtimePublisher;
         this.assignmentService = assignmentService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @GetMapping
@@ -96,34 +99,102 @@ public class DustbinController {
         if (dustbin.getApiKey() == null || dustbin.getApiKey().isBlank()) {
             dustbin.setApiKey("dvk_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24));
         }
+        if (dustbin.getStatus() == null || dustbin.getStatus().isBlank()) {
+            dustbin.setStatus("AVAILABLE");
+        }
+        if (dustbin.getFillLevel() == null) {
+            dustbin.setFillLevel(0.0);
+        }
         Dustbin saved = repository.save(dustbin);
         
         logAudit("CREATE", "Dustbin", saved.getId(), "Created dustbin " + saved.getName(), authentication);
-        realtimePublisher.globalActivity("BIN");
+        
+        // Broadcast saved dustbin to dashboard/map live topics
+        messagingTemplate.convertAndSend("/topic/dustbins", saved);
+        realtimePublisher.globalActivity("BIN", java.util.Map.of(
+            "action", "CREATE",
+            "binId", saved.getId(),
+            "name", saved.getName() != null ? saved.getName() : ""
+        ));
         return ResponseEntity.ok(saved);
     }
     
     @PutMapping("/{id}")
     public ResponseEntity<Dustbin> updateDustbin(@PathVariable Long id, @RequestBody Dustbin dustbin, Authentication authentication) {
         return repository.findById(id).map(existing -> {
-            existing.setName(dustbin.getName());
-            existing.setDeviceId(dustbin.getDeviceId());
+            if (dustbin.getName() != null && !dustbin.getName().isBlank()) {
+                existing.setName(dustbin.getName());
+            }
+            if (dustbin.getDeviceId() != null && !dustbin.getDeviceId().isBlank()) {
+                existing.setDeviceId(dustbin.getDeviceId());
+            }
             if (dustbin.getApiKey() != null && !dustbin.getApiKey().isBlank()) {
                 existing.setApiKey(dustbin.getApiKey());
             }
-            existing.setWasteType(dustbin.getWasteType());
-            existing.setCapacityLiters(dustbin.getCapacityLiters());
-            existing.setLocationName(dustbin.getLocationName());
-            existing.setAddress(dustbin.getAddress());
-            existing.setLatitude(dustbin.getLatitude());
-            existing.setLongitude(dustbin.getLongitude());
-            existing.setAreaType(dustbin.getAreaType());
-            existing.setIsActive(dustbin.getIsActive());
+            if (dustbin.getWasteType() != null && !dustbin.getWasteType().isBlank()) {
+                existing.setWasteType(dustbin.getWasteType());
+            }
+            if (dustbin.getCapacityLiters() != null) {
+                existing.setCapacityLiters(dustbin.getCapacityLiters());
+            }
+            if (dustbin.getLocationName() != null) {
+                existing.setLocationName(dustbin.getLocationName());
+            }
+            if (dustbin.getAddress() != null) {
+                existing.setAddress(dustbin.getAddress());
+            }
+            if (dustbin.getLatitude() != null) {
+                existing.setLatitude(dustbin.getLatitude());
+            }
+            if (dustbin.getLongitude() != null) {
+                existing.setLongitude(dustbin.getLongitude());
+            }
+            if (dustbin.getAreaType() != null) {
+                existing.setAreaType(dustbin.getAreaType());
+            }
+            if (dustbin.getIsActive() != null) {
+                existing.setIsActive(dustbin.getIsActive());
+            }
+            if (dustbin.getStatus() != null && !dustbin.getStatus().isBlank()) {
+                existing.setStatus(dustbin.getStatus());
+            }
+            if (dustbin.getFillLevel() != null) {
+                existing.setFillLevel(dustbin.getFillLevel());
+            }
             
             Dustbin updated = repository.save(existing);
             logAudit("UPDATE", "Dustbin", updated.getId(), "Updated dustbin " + updated.getName(), authentication);
-            realtimePublisher.globalActivity("BIN");
+            
+            // Broadcast live update to /topic/dustbins and /topic/activity/global
+            messagingTemplate.convertAndSend("/topic/dustbins", updated);
+            realtimePublisher.globalActivity("BIN", java.util.Map.of(
+                "action", "UPDATE",
+                "binId", updated.getId(),
+                "name", updated.getName() != null ? updated.getName() : ""
+            ));
             return ResponseEntity.ok(updated);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteDustbin(@PathVariable Long id, Authentication authentication) {
+        return repository.findById(id).map(bin -> {
+            String binName = bin.getName();
+            try {
+                repository.delete(bin);
+            } catch (Exception e) {
+                // If foreign keys prevent hard delete, mark inactive
+                bin.setIsActive(false);
+                repository.save(bin);
+            }
+            logAudit("DELETE", "Dustbin", id, "Deleted dustbin " + binName, authentication);
+            
+            realtimePublisher.globalActivity("BIN", java.util.Map.of(
+                "action", "DELETE",
+                "binId", id,
+                "name", binName != null ? binName : ""
+            ));
+            return ResponseEntity.ok(java.util.Map.of("message", "Dustbin deleted successfully", "id", id));
         }).orElse(ResponseEntity.notFound().build());
     }
 

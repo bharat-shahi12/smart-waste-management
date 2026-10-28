@@ -17,5 +17,16 @@ export const dustbinService = {
   getDustbinHistory: async (id: number, range: string): Promise<SensorReading[]> => {
     const res = await api.get(`/dustbins/${id}/history`, { params: { range } });
     return res.data;
+  },
+  createDustbin: async (data: Partial<Dustbin>): Promise<Dustbin> => {
+    const res = await api.post('/dustbins', data);
+    return res.data;
+  },
+  updateDustbin: async (id: number, data: Partial<Dustbin>): Promise<Dustbin> => {
+    const res = await api.put(`/dustbins/${id}`, data);
+    return res.data;
+  },
+  deleteDustbin: async (id: number): Promise<void> => {
+    await api.delete(`/dustbins/${id}`);
   }
 };

@@ -45,10 +45,16 @@ public class RealtimePublisher {
     }
 
     public void globalActivity(String type) {
-        Map<String, Object> payload = Map.of(
-                "type", type,
-                "timestamp", Instant.now().toString()
-        );
+        globalActivity(type, null);
+    }
+
+    public void globalActivity(String type, Map<String, Object> extra) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", type);
+        payload.put("timestamp", Instant.now().toString());
+        if (extra != null) {
+            payload.putAll(extra);
+        }
         Runnable send = () -> messagingTemplate.convertAndSend("/topic/activity/global", (Object) payload);
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {

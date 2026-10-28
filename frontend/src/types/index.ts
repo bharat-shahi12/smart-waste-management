@@ -13,21 +13,27 @@ export interface Dustbin {
   id: number;
   deviceId: string;
   name: string;
-  locationName: string;
+  locationName?: string;
+  address?: string;
+  areaType?: string;
+  apiKey?: string;
+  isActive?: boolean;
   latitude: number;
   longitude: number;
   capacityLiters: number;
   fillLevel: number;
-  status: 'AVAILABLE' | 'FULL' | 'OFFLINE';
-  wasteType: 'WET' | 'DRY' | 'MIXED' | 'UNKNOWN';
-  temperature: number;
-  humidity: number;
-  airQuality: number;
-  moisture: number;
-  batteryLevel: number;
-  deviceStatus: 'ONLINE' | 'OFFLINE';
-  lastSeen: string;
+  status: 'AVAILABLE' | 'FULL' | 'OFFLINE' | string;
+  wasteType: 'WET' | 'DRY' | 'MIXED' | 'ORGANIC' | 'RECYCLABLE' | 'PLASTIC' | 'UNKNOWN' | string;
+  temperature?: number;
+  humidity?: number;
+  airQuality?: number;
+  moisture?: number;
+  batteryLevel?: number;
+  deviceStatus?: 'ONLINE' | 'OFFLINE';
+  lastSeen?: string;
   distance?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SensorReading {

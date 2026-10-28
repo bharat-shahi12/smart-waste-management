@@ -4,6 +4,7 @@ import { complaintService } from '../../services/complaintService';
 import type { Dustbin  } from '../../types';
 import { Upload, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useLiveRefresh } from '../../services/liveEvents';
 
 export default function UserReportIssue() {
   const [dustbins, setDustbins] = useState<Dustbin[]>([]);
@@ -18,6 +19,13 @@ export default function UserReportIssue() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  const fetchDustbins = () => {
+    dustbinService.getAllDustbins()
+      .then(setDustbins)
+      .catch(() => setError('Failed to load dustbins'));
+  };
+
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -27,10 +35,10 @@ export default function UserReportIssue() {
         }
       );
     }
-    dustbinService.getAllDustbins()
-      .then(setDustbins)
-      .catch(() => setError('Failed to load dustbins'));
+    fetchDustbins();
   }, []);
+
+  useLiveRefresh(fetchDustbins, ['DUSTBIN', 'BIN', 'RECONNECTED']);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {

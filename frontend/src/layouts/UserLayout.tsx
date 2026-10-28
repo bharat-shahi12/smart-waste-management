@@ -61,7 +61,16 @@ export default function UserLayout() {
           emitLive(evt.type, evt);
 
           if (evt.type === 'BIN') {
-            setLatestNotification({ title: 'New Smart Bin Added', message: 'A new smart bin has been added to the network!' });
+            let title = 'New Smart Bin Added';
+            let message = evt.name ? `Smart bin "${evt.name}" has been added to the network!` : 'A new smart bin has been added to the network!';
+            if (evt.action === 'UPDATE') {
+              title = 'Smart Bin Updated';
+              message = evt.name ? `Smart bin "${evt.name}" details have been updated.` : 'Smart bin information was updated.';
+            } else if (evt.action === 'DELETE') {
+              title = 'Smart Bin Removed';
+              message = evt.name ? `Smart bin "${evt.name}" was removed from the network.` : 'A smart bin was removed from the network.';
+            }
+            setLatestNotification({ title, message });
             if (toastTimer) clearTimeout(toastTimer);
             toastTimer = setTimeout(() => setLatestNotification(null), 5000);
           }

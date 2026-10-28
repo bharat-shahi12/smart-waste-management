@@ -100,14 +100,16 @@ export default function UserDashboard() {
     fetchPickups();
   }, ['WASTE_LOG', 'PICKUP', 'RECONNECTED']);
 
-  useLiveRefresh((_type, payload: any) => {
-    if (payload && payload.id) {
+  useLiveRefresh((type, payload: any) => {
+    if (type === 'DUSTBIN' && payload && payload.id) {
       setDustbins(prev => {
         const exists = prev.some(b => b.id === payload.id);
         return exists ? prev.map(b => (b.id === payload.id ? { ...b, ...payload } : b)) : [...prev, payload];
       });
+    } else {
+      dustbinService.getAllDustbins().then(setDustbins).catch(console.error);
     }
-  }, ['DUSTBIN'], 0);
+  }, ['DUSTBIN', 'BIN', 'RECONNECTED'], 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
