@@ -4,6 +4,10 @@
 !.env.example
 *.env.local
 *.env.*.local
+*serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+*.pem
+*.key
 
 # Operating System files
 .DS_Store
