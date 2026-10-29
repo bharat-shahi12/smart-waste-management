@@ -320,13 +320,17 @@ public class AssignmentService {
             responderData.put("vehicle", "Municipal Waste Vehicle #104");
             tracking.put("responder", responderData);
 
-            Map<String, Object> location = new HashMap<>();
-            location.put("latitude", assignment.getResponderLatitude() != null ? assignment.getResponderLatitude() : 28.558);
-            location.put("longitude", assignment.getResponderLongitude() != null ? assignment.getResponderLongitude() : 77.328);
-            location.put("locationName", assignment.getResponderLocationName() != null ? assignment.getResponderLocationName() : "En route");
-            location.put("etaMinutes", assignment.getResponderEtaMinutes() != null ? assignment.getResponderEtaMinutes() : 8);
-            location.put("updatedAt", assignment.getResponderUpdatedAt() != null ? assignment.getResponderUpdatedAt() : ZonedDateTime.now());
-            tracking.put("responderLocation", location);
+            if (assignment.getResponderLatitude() != null && assignment.getResponderLongitude() != null) {
+                Map<String, Object> location = new HashMap<>();
+                location.put("latitude", assignment.getResponderLatitude());
+                location.put("longitude", assignment.getResponderLongitude());
+                location.put("locationName", assignment.getResponderLocationName() != null ? assignment.getResponderLocationName() : "Driver Live GPS");
+                location.put("etaMinutes", assignment.getResponderEtaMinutes() != null ? assignment.getResponderEtaMinutes() : 10);
+                location.put("updatedAt", assignment.getResponderUpdatedAt() != null ? assignment.getResponderUpdatedAt() : ZonedDateTime.now());
+                tracking.put("responderLocation", location);
+            } else {
+                tracking.put("responderLocation", null);
+            }
             tracking.put("assignmentStatus", assignment.getStatus());
         }
 

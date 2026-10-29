@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { 
   X, Truck, Phone, Navigation, Clock, ShieldCheck, 
-  MapPin, CheckCircle2, AlertCircle, RefreshCw, Radio 
+  MapPin, CheckCircle2, AlertCircle, RefreshCw, Radio, Compass
 } from 'lucide-react';
 import api, { WS_URL } from '../services/api';
 import SockJS from 'sockjs-client';
@@ -12,6 +12,7 @@ import { Client } from '@stomp/stompjs';
 import { ref, onValue } from 'firebase/database';
 import { database } from '../firebase';
 import { MAP_LAYERS, openInGoogleMaps } from '../utils/mapUtils';
+import { forwardGeocode } from '../services/gpsService';
 
 interface LivePickupTrackerModalProps {
   pickupId: number | string;
@@ -42,7 +43,7 @@ const getCollectorTruckIcon = () => {
           </svg>
         </div>
         <div style="position: absolute; bottom: -8px; background: #9a3412; color: white; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 800; padding: 1.5px 5px; border-radius: 9999px; white-space: nowrap; border: 1px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-          🚛 LIVE COLLECTOR
+          🚛 REAL GPS DRIVER
         </div>
       </div>
     `,
@@ -79,10 +80,9 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Default coordinate center (Bengaluru or Noida fallback)
-  const defaultHomeCoords: [number, number] = [28.555467, 77.325600];
-  const [responderCoords, setResponderCoords] = useState<[number, number]>([28.5592, 77.3298]);
-  const [homeCoords, setHomeCoords] = useState<[number, number]>(defaultHomeCoords);
+  // Real device coordinates (null until received)
+  const [responderCoords, setResponderCoords] = useState<[number, number] | null>(null);
+  const [homeCoords, setHomeCoords] = useState<[number, number] | null>(null);
 
   const fetchTracking = async () => {
     try {
@@ -96,6 +96,18 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
       }
       if (res.data.pickupLatitude && res.data.pickupLongitude) {
         setHomeCoords([res.data.pickupLatitude, res.data.pickupLongitude]);
+      } else if (res.data.pickupAddress) {
+        // Real forward geocoding for citizen address
+        forwardGeocode(res.data.pickupAddress).then(coords => {
+          if (coords) {
+            setHomeCoords([coords.latitude, coords.longitude]);
+          } else if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              pos => setHomeCoords([pos.coords.latitude, pos.coords.longitude]),
+              () => setHomeCoords([12.9716, 77.5946])
+            );
+          }
+        });
       }
     } catch (err: any) {
       setError('Unable to load live tracking details.');
@@ -162,10 +174,11 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
     return (R * c).toFixed(1);
   };
 
-  const distanceKm = calculateDistance(
-    responderCoords[0], responderCoords[1],
-    homeCoords[0], homeCoords[1]
-  );
+  const distanceKm = (responderCoords && homeCoords) 
+    ? calculateDistance(responderCoords[0], responderCoords[1], homeCoords[0], homeCoords[1])
+    : null;
+
+  const mapCenter: [number, number] = responderCoords || homeCoords || [12.9716, 77.5946];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
@@ -182,10 +195,17 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">
                   Live Collector Tracking
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 flex items-center gap-1">
-                  <Radio className="w-3 h-3 animate-pulse text-orange-600" />
-                  GPS STREAM ACTIVE
-                </span>
+                {responderCoords ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 flex items-center gap-1">
+                    <Radio className="w-3 h-3 animate-pulse text-emerald-600" />
+                    REAL GPS LIVE
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 flex items-center gap-1">
+                    <Radio className="w-3 h-3 animate-pulse text-amber-600" />
+                    AWAITING DRIVER GPS
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 font-mono">
                 Request ID: {tracking?.pickupId || pickupId}
@@ -205,7 +225,7 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
         {loading ? (
           <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-500">
             <RefreshCw className="w-8 h-8 animate-spin text-orange-500" />
-            <p className="text-sm font-semibold">Connecting to responder GPS broadcast...</p>
+            <p className="text-sm font-semibold">Connecting to real responder GPS broadcast...</p>
           </div>
         ) : error ? (
           <div className="p-8 text-center text-rose-600">
@@ -216,43 +236,63 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
           <div className="flex flex-col">
             {/* Live Interactive Google Map */}
             <div className="h-72 w-full relative z-0">
-              <MapContainer center={responderCoords} zoom={14} style={{ height: '100%', width: '100%' }}>
-                <MapController center={responderCoords} />
+              <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
+                <MapController center={mapCenter} />
                 <TileLayer 
                   url={MAP_LAYERS.google_streets.url} 
                   attribution={MAP_LAYERS.google_streets.attribution} 
                 />
 
                 {/* Citizen Destination Marker */}
-                <Marker position={homeCoords} icon={getCitizenHomeIcon()}>
-                  <Popup>
-                    <div className="p-1 font-sans text-xs">
-                      <p className="font-bold text-blue-600 mb-0.5">Your Doorstep Address</p>
-                      <p className="text-slate-600">{tracking?.pickupAddress || 'Requested pickup location'}</p>
-                    </div>
-                  </Popup>
-                </Marker>
+                {homeCoords && (
+                  <Marker position={homeCoords} icon={getCitizenHomeIcon()}>
+                    <Popup>
+                      <div className="p-1 font-sans text-xs">
+                        <p className="font-bold text-blue-600 mb-0.5">Your Doorstep Address</p>
+                        <p className="text-slate-600">{tracking?.pickupAddress || 'Requested pickup location'}</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                )}
 
-                {/* Collector Live Moving Marker */}
-                <Marker position={responderCoords} icon={getCollectorTruckIcon()} zIndexOffset={500}>
-                  <Popup>
-                    <div className="p-1 font-sans text-xs">
-                      <p className="font-bold text-orange-600 mb-0.5">Waste Collection Vehicle</p>
-                      <p className="font-semibold text-slate-900">{tracking?.responder?.name || 'Assigned Collector'}</p>
-                      <p className="text-slate-500 text-[11px]">{tracking?.responderLocation?.locationName || 'En route'}</p>
-                    </div>
-                  </Popup>
-                </Marker>
+                {/* Collector Live Moving Marker (Shown only when real GPS is broadcasted) */}
+                {responderCoords && (
+                  <Marker position={responderCoords} icon={getCollectorTruckIcon()} zIndexOffset={500}>
+                    <Popup>
+                      <div className="p-1 font-sans text-xs">
+                        <p className="font-bold text-orange-600 mb-0.5">Real-time Waste Vehicle</p>
+                        <p className="font-semibold text-slate-900">{tracking?.responder?.name || 'Assigned Collector'}</p>
+                        <p className="text-slate-500 text-[11px]">{tracking?.responderLocation?.locationName || 'Driver Current Location'}</p>
+                        <p className="text-[10px] text-emerald-600 font-mono mt-0.5">
+                          📍 {responderCoords[0].toFixed(5)}, {responderCoords[1].toFixed(5)}
+                        </p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                )}
               </MapContainer>
 
-              {/* Floating ETA Banner */}
+              {/* Floating Status & ETA Banner */}
               <div className="absolute bottom-3 left-3 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-2 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 flex items-center gap-3 text-xs font-bold">
-                <div className="flex items-center gap-1.5 text-orange-600">
-                  <Clock className="w-4 h-4 animate-spin text-orange-500" />
-                  <span>ETA: ~{tracking?.responderLocation?.etaMinutes || 10} Mins</span>
-                </div>
-                <span className="text-slate-300">|</span>
-                <span className="text-slate-600 dark:text-slate-300">{distanceKm} km away</span>
+                {responderCoords ? (
+                  <>
+                    <div className="flex items-center gap-1.5 text-orange-600">
+                      <Clock className="w-4 h-4 animate-spin text-orange-500" />
+                      <span>ETA: ~{tracking?.responderLocation?.etaMinutes || 10} Mins</span>
+                    </div>
+                    {distanceKm && (
+                      <>
+                        <span className="text-slate-300">|</span>
+                        <span className="text-slate-600 dark:text-slate-300">{distanceKm} km away</span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-amber-600">
+                    <Compass className="w-4 h-4 animate-spin text-amber-500" />
+                    <span>Awaiting driver GPS connection...</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -265,10 +305,12 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <div>
                     <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                      Collector is En Route ({tracking?.status || 'ACCEPTED'})
+                      Collector Assigned ({tracking?.status || 'ACCEPTED'})
                     </p>
                     <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                      Vehicle location is updating in real-time. Please keep your waste segregated.
+                      {responderCoords 
+                        ? `Live GPS connected. Driver is at ${tracking?.responderLocation?.locationName || 'their current location'}.` 
+                        : 'Driver has accepted your request. Waiting for their live GPS broadcast to start.'}
                     </p>
                   </div>
                 </div>
@@ -292,7 +334,7 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
                       Verified Municipal Waste Partner
                     </p>
                     <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                      Vehicle: {tracking?.responder?.vehicle || 'Eco Waste Truck #104'}
+                      Vehicle: {tracking?.responder?.vehicle || 'Municipal Waste Vehicle #104'}
                     </p>
                   </div>
                 </div>
@@ -307,13 +349,15 @@ export default function LivePickupTrackerModal({ pickupId, onClose }: LivePickup
                       <span>Call Driver</span>
                     </a>
                   )}
-                  <button
-                    onClick={() => openInGoogleMaps(responderCoords[0], responderCoords[1])}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#1a73e8] hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-xs transition"
-                  >
-                    <Navigation className="w-3.5 h-3.5" />
-                    <span>Google Maps</span>
-                  </button>
+                  {responderCoords && (
+                    <button
+                      onClick={() => openInGoogleMaps(responderCoords[0], responderCoords[1])}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#1a73e8] hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-xs transition"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>Google Maps</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

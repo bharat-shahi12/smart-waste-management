@@ -1,25 +1,17 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useLiveRefresh } from '../../services/liveEvents';
-import { MapPin, Navigation, Radio, X, CheckCircle2, RefreshCw } from 'lucide-react';
+import { 
+  MapPin, Navigation, Radio, X, CheckCircle2, RefreshCw, 
+  AlertTriangle, Compass
+} from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-
-const getCurrentGpsPosition = (): Promise<{ latitude: number; longitude: number } | null> => {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ latitude: 28.5592, longitude: 77.3298 });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      (err) => {
-        console.warn('Geolocation error / permission denied, using default fallback:', err.message);
-        resolve({ latitude: 28.5592, longitude: 77.3298 });
-      },
-      { timeout: 7000, enableHighAccuracy: true }
-    );
-  });
-};
+import { 
+  getRealDevicePosition, 
+  startLiveGpsBroadcast, 
+  stopLiveGpsBroadcast,
+  type DeviceGpsPosition 
+} from '../../services/gpsService';
 
 export default function ResponderAssignments() {
   const location = useLocation();
@@ -28,15 +20,25 @@ export default function ResponderAssignments() {
   const isHistory = location.pathname.includes('/history');
   const [filter, setFilter] = useState(isHistory ? 'Completed' : 'All');
   const [updatingId, setUpdatingId] = useState<number | null>(null);
-  
-  // Location sharing modal state
-  const [locationModalAssignment, setLocationModalAssignment] = useState<any | null>(null);
-  const [locLat, setLocLat] = useState('28.5592');
-  const [locLng, setLocLng] = useState('77.3298');
-  const [locName, setLocName] = useState('Sector 62 Main Road');
+
+  // Active continuous GPS streaming state
+  const [streamingAssignmentId, setStreamingAssignmentId] = useState<number | null>(null);
+  const [activeGps, setActiveGps] = useState<DeviceGpsPosition | null>(null);
+
+  // Accept & GPS Sharing Modal state
+  const [acceptModalAssignment, setAcceptModalAssignment] = useState<any | null>(null);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsError, setGpsError] = useState('');
+  const [locLat, setLocLat] = useState('');
+  const [locLng, setLocLng] = useState('');
+  const [locAccuracy, setLocAccuracy] = useState<number | null>(null);
+  const [locName, setLocName] = useState('');
   const [locEta, setLocEta] = useState(10);
-  const [updatingLoc, setUpdatingLoc] = useState(false);
-  const [locSuccess, setLocSuccess] = useState('');
+  const [continuousStream, setContinuousStream] = useState(true);
+  const [acceptSubmitting, setAcceptSubmitting] = useState(false);
+
+  // Update Location Modal for active tasks
+  const [updateLocAssignment, setUpdateLocAssignment] = useState<any | null>(null);
 
   const fetchAssignments = async () => {
     try {
@@ -51,28 +53,110 @@ export default function ResponderAssignments() {
 
   useEffect(() => {
     fetchAssignments();
+    return () => {
+      stopLiveGpsBroadcast();
+    };
   }, []);
 
   useLiveRefresh(fetchAssignments, ['ASSIGNMENT', 'ASSIGNMENT_UPDATED'], 1000);
 
-  const updateStatus = async (id: number, status: string, note?: string) => {
-    setUpdatingId(id);
+  // Triggered when driver clicks "Accept"
+  const handleInitiateAccept = (assignment: any) => {
+    setAcceptModalAssignment(assignment);
+    setGpsError('');
+    setLocLat('');
+    setLocLng('');
+    setLocAccuracy(null);
+    setLocName('');
+    setLocEta(10);
+    setContinuousStream(true);
+
+    detectRealGps();
+  };
+
+  const detectRealGps = async () => {
+    setDetectingGps(true);
+    setGpsError('');
     try {
-      let coords: { latitude: number; longitude: number } | null = null;
-      if (['ACCEPTED', 'ON_THE_WAY', 'ARRIVED'].includes(status)) {
-        coords = await getCurrentGpsPosition();
+      const pos = await getRealDevicePosition();
+      setLocLat(String(pos.latitude.toFixed(6)));
+      setLocLng(String(pos.longitude.toFixed(6)));
+      setLocAccuracy(pos.accuracy);
+      setLocName(pos.locationName);
+      setActiveGps(pos);
+    } catch (err: any) {
+      setGpsError(err.message || 'Failed to get device GPS. Please enable location permissions.');
+    } finally {
+      setDetectingGps(false);
+    }
+  };
+
+  const handleConfirmAcceptWithGps = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!acceptModalAssignment) return;
+
+    if (!locLat || !locLng) {
+      alert('Please acquire your real GPS location or enter valid coordinates.');
+      return;
+    }
+
+    setAcceptSubmitting(true);
+    const id = acceptModalAssignment.id;
+
+    try {
+      const latNum = parseFloat(locLat);
+      const lngNum = parseFloat(locLng);
+
+      const params: any = {
+        status: 'ACCEPTED',
+        latitude: latNum,
+        longitude: lngNum,
+        locationName: locName || `GPS: ${latNum.toFixed(4)}, ${lngNum.toFixed(4)}`,
+        etaMinutes: locEta
+      };
+
+      await api.post(`/responder/assignments/${id}/status`, null, { params });
+
+      if (continuousStream) {
+        startLiveGpsBroadcast(id, (updatedPos) => {
+          setActiveGps(updatedPos);
+        });
+        setStreamingAssignmentId(id);
       }
 
+      setAcceptModalAssignment(null);
+      await fetchAssignments();
+    } catch (err: any) {
+      alert('Error accepting task: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setAcceptSubmitting(false);
+    }
+  };
+
+  const updateStatusSimple = async (id: number, status: string, note?: string) => {
+    setUpdatingId(id);
+    try {
       const params: any = { status };
       if (note) params.note = note;
-      if (coords) {
-        params.latitude = coords.latitude;
-        params.longitude = coords.longitude;
-        params.locationName = status === 'ACCEPTED' ? 'Collector Accepted / Starting Depot' : status === 'ON_THE_WAY' ? 'En Route to Pickup' : 'Arrived at Citizen Location';
-        params.etaMinutes = status === 'ACCEPTED' ? 15 : status === 'ON_THE_WAY' ? 10 : 0;
+
+      // If active GPS exists, include real coords
+      if (activeGps) {
+        params.latitude = activeGps.latitude;
+        params.longitude = activeGps.longitude;
+        params.locationName = activeGps.locationName;
+        params.etaMinutes = status === 'ON_THE_WAY' ? 8 : 0;
       }
 
       await api.post(`/responder/assignments/${id}/status`, null, { params });
+
+      if (status === 'COMPLETED') {
+        if (streamingAssignmentId === id) {
+          stopLiveGpsBroadcast();
+          setStreamingAssignmentId(null);
+          setActiveGps(null);
+        }
+      }
+
       await fetchAssignments();
     } catch (err) {
       console.error(err);
@@ -82,44 +166,37 @@ export default function ResponderAssignments() {
     }
   };
 
-  const handleOpenLocationModal = (assignment: any) => {
-    setLocationModalAssignment(assignment);
-    setLocLat(assignment.responderLatitude ? String(assignment.responderLatitude) : '28.5592');
-    setLocLng(assignment.responderLongitude ? String(assignment.responderLongitude) : '77.3298');
-    setLocName(assignment.responderLocationName || 'Sector 62 Main Road');
+  // Open Update GPS modal
+  const handleOpenUpdateModal = (assignment: any) => {
+    setUpdateLocAssignment(assignment);
+    setLocLat(assignment.responderLatitude ? String(assignment.responderLatitude) : '');
+    setLocLng(assignment.responderLongitude ? String(assignment.responderLongitude) : '');
+    setLocName(assignment.responderLocationName || '');
     setLocEta(assignment.responderEtaMinutes || 10);
-    setLocSuccess('');
-    
-    // Auto-query current GPS
-    getCurrentGpsPosition().then(coords => {
-      if (coords) {
-        setLocLat(String(coords.latitude.toFixed(6)));
-        setLocLng(String(coords.longitude.toFixed(6)));
-      }
-    });
+    setGpsError('');
+    detectRealGps();
   };
 
-  const handleSaveLocation = async (e: React.FormEvent) => {
+  const handleSaveUpdatedLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!locationModalAssignment) return;
-    setUpdatingLoc(true);
-    setLocSuccess('');
+    if (!updateLocAssignment) return;
+    setAcceptSubmitting(true);
     try {
-      await api.post(`/responder/assignments/${locationModalAssignment.id}/location`, {
-        latitude: parseFloat(locLat),
-        longitude: parseFloat(locLng),
-        locationName: locName,
-        etaMinutes: parseInt(String(locEta))
+      const latNum = parseFloat(locLat);
+      const lngNum = parseFloat(locLng);
+      await api.post(`/responder/assignments/${updateLocAssignment.id}/location`, {
+        latitude: latNum,
+        longitude: lngNum,
+        locationName: locName || `GPS: ${latNum.toFixed(4)}, ${lngNum.toFixed(4)}`,
+        etaMinutes: locEta
       });
-      setLocSuccess('📍 Live GPS location broadcasted to citizen!');
+      alert('📍 Real device GPS location broadcasted to citizen!');
+      setUpdateLocAssignment(null);
       await fetchAssignments();
-      setTimeout(() => {
-        setLocationModalAssignment(null);
-      }, 1500);
     } catch (err: any) {
       alert('Failed to update location: ' + (err.response?.data?.error || err.message));
     } finally {
-      setUpdatingLoc(false);
+      setAcceptSubmitting(false);
     }
   };
 
@@ -150,7 +227,54 @@ export default function ResponderAssignments() {
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-6">
-      <h1 className="text-3xl font-black text-white mb-6">{pageTitle}</h1>
+      
+      {/* Real-time GPS Streaming Top Banner */}
+      {streamingAssignmentId && (
+        <div className="bg-gradient-to-r from-emerald-950/80 via-emerald-900/50 to-slate-900 border border-emerald-500/60 p-4 rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Radio className="w-5 h-5 animate-pulse text-emerald-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-white text-sm">
+                  Live Real-time GPS Broadcast Active
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500 text-slate-950">
+                  LIVE STREAMING
+                </span>
+              </div>
+              <p className="text-xs text-emerald-200/80 mt-0.5">
+                Streaming your real device coordinates ({activeGps ? `${activeGps.latitude.toFixed(5)}, ${activeGps.longitude.toFixed(5)}` : 'Connecting...'}) to citizen.
+                {activeGps?.locationName && ` • Near: ${activeGps.locationName}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => detectRealGps()}
+              className="px-3 py-1.5 bg-emerald-800/50 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Ping GPS</span>
+            </button>
+            <button
+              onClick={() => {
+                stopLiveGpsBroadcast();
+                setStreamingAssignmentId(null);
+              }}
+              className="px-3 py-1.5 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition"
+            >
+              Pause Stream
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-black text-white">{pageTitle}</h1>
+      </div>
 
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {['All', 'Pending', 'Accepted', 'In Progress', 'Completed'].map(f => (
@@ -169,7 +293,7 @@ export default function ResponderAssignments() {
       </div>
 
       {loading ? (
-        <div className="text-center py-10 text-[#A9A5BA]">Loading...</div>
+        <div className="text-center py-10 text-[#A9A5BA]">Loading assignments...</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 text-[#A9A5BA]">No assignments found.</div>
       ) : (
@@ -190,9 +314,9 @@ export default function ResponderAssignments() {
                     {a.priority} Priority
                   </span>
                   {a.responderLatitude && (
-                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400 flex items-center gap-1">
-                      <Radio className="w-3 h-3 animate-pulse" />
-                      GPS Active ({a.responderEtaMinutes || 10}m ETA)
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+                      Real GPS Shared ({a.responderEtaMinutes || 10}m ETA)
                     </span>
                   )}
                 </div>
@@ -211,9 +335,11 @@ export default function ResponderAssignments() {
                 </div>
 
                 {a.responderLatitude && (
-                  <div className="text-xs text-[#A9A5BA] font-mono flex items-center gap-2">
-                    <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Last Coords: {Number(a.responderLatitude).toFixed(4)}, {Number(a.responderLongitude).toFixed(4)} ({a.responderLocationName || 'En route'})</span>
+                  <div className="text-xs text-emerald-300/80 font-mono flex items-center gap-2 bg-emerald-950/30 px-3 py-1.5 rounded-xl border border-emerald-500/20 max-w-md">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">
+                      Real Driver GPS: {Number(a.responderLatitude).toFixed(4)}, {Number(a.responderLongitude).toFixed(4)} • {a.responderLocationName || 'Driver Current Location'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -226,51 +352,54 @@ export default function ResponderAssignments() {
                 <div className="flex gap-2 flex-wrap w-full md:w-auto">
                   {['ACCEPTED', 'ON_THE_WAY', 'ARRIVED'].includes(a.status) && (
                     <button 
-                      onClick={() => handleOpenLocationModal(a)}
-                      className="px-3 py-2 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition"
-                      title="Update your live coordinates for the citizen to track"
+                      onClick={() => handleOpenUpdateModal(a)}
+                      className="px-3.5 py-2 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition"
+                      title="Update your live real GPS coordinates for the citizen"
                     >
                       <Navigation className="w-3.5 h-3.5" />
-                      <span>Share / Update GPS</span>
+                      <span>Update Real GPS</span>
                     </button>
                   )}
 
                   {a.status === 'ASSIGNED' && (
                     <button 
                       disabled={updatingId === a.id}
-                      onClick={() => updateStatus(a.id, 'ACCEPTED')} 
-                      className="btn-primary w-full md:w-auto px-4 py-2 bg-[#FF7A00] hover:bg-[#FF4D24] text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
+                      onClick={() => handleInitiateAccept(a)} 
+                      className="btn-primary w-full md:w-auto px-4 py-2 bg-[#FF7A00] hover:bg-[#FF4D24] text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20"
                     >
-                      {updatingId === a.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-                      <span>Accept & Share GPS</span>
+                      <Navigation className="w-4 h-4" />
+                      <span>Accept & Share Real GPS</span>
                     </button>
                   )}
+
                   {a.status === 'ACCEPTED' && (
                     <button 
                       disabled={updatingId === a.id}
-                      onClick={() => updateStatus(a.id, 'ON_THE_WAY')} 
+                      onClick={() => updateStatusSimple(a.id, 'ON_THE_WAY')} 
                       className="btn-primary w-full md:w-auto px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
                     >
                       {updatingId === a.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
                       <span>Start Task</span>
                     </button>
                   )}
+
                   {a.status === 'ON_THE_WAY' && (
                     <button 
                       disabled={updatingId === a.id}
-                      onClick={() => updateStatus(a.id, 'ARRIVED')} 
+                      onClick={() => updateStatusSimple(a.id, 'ARRIVED')} 
                       className="btn-primary w-full md:w-auto px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
                     >
                       {updatingId === a.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
                       <span>Mark Arrived</span>
                     </button>
                   )}
+
                   {a.status === 'ARRIVED' && (
                     <button 
                       disabled={updatingId === a.id}
                       onClick={() => {
                         const note = prompt('Completion note (optional):');
-                        updateStatus(a.id, 'COMPLETED', note || undefined);
+                        updateStatusSimple(a.id, 'COMPLETED', note || undefined);
                       }} 
                       className="btn-primary w-full md:w-auto px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
                     >
@@ -285,31 +414,213 @@ export default function ResponderAssignments() {
         </div>
       )}
 
-      {/* Share / Update GPS Modal */}
-      {locationModalAssignment && (
+      {/* Accept Assignment with REAL Device GPS Modal */}
+      {acceptModalAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-[#120822] border border-white/10 rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500/20 text-[#FF7A00] flex items-center justify-center">
+                  <Navigation className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Accept & Share Real GPS</h3>
+                  <p className="text-xs text-[#A9A5BA]">Pickup ID: #{acceptModalAssignment.id}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setAcceptModalAssignment(null)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* GPS Detection Status Card */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-300 flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-[#FF7A00]" />
+                  Device Location Status
+                </span>
+                {detectingGps ? (
+                  <span className="text-xs font-semibold text-orange-400 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Requesting device GPS...
+                  </span>
+                ) : locLat ? (
+                  <span className="text-xs font-extrabold text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Real GPS Locked
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Awaiting Permission
+                  </span>
+                )}
+              </div>
+
+              {gpsError && (
+                <div className="bg-rose-500/15 border border-rose-500/30 p-3 rounded-xl text-xs text-rose-300 space-y-2">
+                  <p className="font-bold flex items-start gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <span>{gpsError}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={detectRealGps}
+                    className="w-full bg-rose-600/30 hover:bg-rose-600/50 text-white font-bold py-1.5 px-3 rounded-lg text-xs transition"
+                  >
+                    🔄 Try Detecting GPS Again
+                  </button>
+                </div>
+              )}
+
+              {locLat && (
+                <div className="bg-emerald-950/40 border border-emerald-500/30 p-3.5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Real Coordinates:</span>
+                    <span className="font-mono font-bold text-emerald-300">{locLat}, {locLng}</span>
+                  </div>
+                  {locAccuracy && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">GPS Accuracy:</span>
+                      <span className="font-semibold text-emerald-400">±{locAccuracy} meters</span>
+                    </div>
+                  )}
+                  {locName && (
+                    <div className="flex items-start justify-between text-xs pt-1 border-t border-emerald-500/20">
+                      <span className="text-gray-400 shrink-0">Real Location:</span>
+                      <span className="font-bold text-white text-right ml-2">{locName}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Accept Form */}
+            <form onSubmit={handleConfirmAcceptWithGps} className="space-y-4 text-xs font-semibold">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-gray-300 block mb-1">Driver Latitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    placeholder="e.g. 12.9716"
+                    value={locLat}
+                    onChange={(e) => setLocLat(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-300 block mb-1">Driver Longitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    placeholder="e.g. 77.5946"
+                    value={locLng}
+                    onChange={(e) => setLocLng(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-gray-300 block mb-1">Current Real Landmark / Area</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Indiranagar Main Road"
+                  value={locName}
+                  onChange={(e) => setLocName(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-gray-300">Estimated Arrival (ETA)</label>
+                  <span className="text-[#FF7A00] font-bold">~{locEta} Minutes</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="45"
+                  value={locEta}
+                  onChange={(e) => setLocEta(Number(e.target.value))}
+                  className="w-full accent-[#FF7A00]"
+                />
+              </div>
+
+              <div className="p-3 bg-white/5 border border-white/10 rounded-xl flex items-center gap-3 cursor-pointer" onClick={() => setContinuousStream(!continuousStream)}>
+                <input
+                  type="checkbox"
+                  checked={continuousStream}
+                  onChange={(e) => setContinuousStream(e.target.checked)}
+                  className="accent-[#FF7A00] w-4 h-4 rounded cursor-pointer"
+                />
+                <div>
+                  <p className="text-white font-bold text-xs">Enable Continuous GPS Streaming</p>
+                  <p className="text-[#A9A5BA] text-[11px]">Continuously stream updated coordinates as your vehicle travels toward the citizen</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setAcceptModalAssignment(null)}
+                  className="w-1/3 bg-white/5 hover:bg-white/10 text-gray-300 py-3 rounded-xl font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={acceptSubmitting || !locLat || !locLng}
+                  className="w-2/3 bg-[#FF7A00] hover:bg-orange-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-lg shadow-orange-500/25"
+                >
+                  {acceptSubmitting ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Radio className="w-4 h-4 animate-pulse" />
+                  )}
+                  <span>Accept & Broadcast GPS</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Update Real GPS Modal */}
+      {updateLocAssignment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#120822] border border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <div className="flex items-center gap-2 text-white font-bold">
                 <Navigation className="w-5 h-5 text-[#FF7A00]" />
-                <h3>Broadcast Live GPS to Citizen</h3>
+                <h3>Broadcast Updated Real GPS</h3>
               </div>
               <button 
-                onClick={() => setLocationModalAssignment(null)}
+                onClick={() => setUpdateLocAssignment(null)}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {locSuccess && (
-              <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{locSuccess}</span>
+            <form onSubmit={handleSaveUpdatedLocation} className="space-y-4 text-xs font-semibold">
+              <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
+                <span className="text-gray-300">Device GPS</span>
+                <button
+                  type="button"
+                  onClick={detectRealGps}
+                  className="text-xs text-[#FF7A00] font-bold hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${detectingGps ? 'animate-spin' : ''}`} />
+                  <span>Re-detect Location</span>
+                </button>
               </div>
-            )}
 
-            <form onSubmit={handleSaveLocation} className="space-y-4 text-xs font-semibold">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-gray-300 block mb-1">Latitude</label>
@@ -319,7 +630,7 @@ export default function ResponderAssignments() {
                     required
                     value={locLat}
                     onChange={(e) => setLocLat(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white font-mono"
                   />
                 </div>
                 <div>
@@ -330,20 +641,19 @@ export default function ResponderAssignments() {
                     required
                     value={locLng}
                     onChange={(e) => setLocLng(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-gray-300 block mb-1">Current Street / Landmark</label>
+                <label className="text-gray-300 block mb-1">Current Street / Area</label>
                 <input
                   type="text"
                   required
                   value={locName}
                   onChange={(e) => setLocName(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white"
-                  placeholder="e.g. Ring Road near Metro Station"
                 />
               </div>
 
@@ -352,7 +662,7 @@ export default function ResponderAssignments() {
                 <input
                   type="range"
                   min="1"
-                  max="60"
+                  max="45"
                   value={locEta}
                   onChange={(e) => setLocEta(Number(e.target.value))}
                   className="w-full accent-[#FF7A00]"
@@ -362,18 +672,18 @@ export default function ResponderAssignments() {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setLocationModalAssignment(null)}
+                  onClick={() => setUpdateLocAssignment(null)}
                   className="w-1/3 bg-white/5 hover:bg-white/10 text-gray-300 py-2.5 rounded-xl font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={updatingLoc}
+                  disabled={acceptSubmitting}
                   className="w-2/3 bg-[#FF7A00] hover:bg-orange-600 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-50"
                 >
-                  {updatingLoc ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4 animate-pulse" />}
-                  <span>Broadcast GPS</span>
+                  {acceptSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4 animate-pulse" />}
+                  <span>Push Real GPS</span>
                 </button>
               </div>
             </form>
@@ -383,4 +693,3 @@ export default function ResponderAssignments() {
     </div>
   );
 }
-
