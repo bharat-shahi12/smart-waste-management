@@ -541,7 +541,9 @@ export default function UserDashboard() {
                 switch (status) {
                   case 'REQUESTED': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
                   case 'ASSIGNED': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+                  case 'ACCEPTED': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
                   case 'ON_THE_WAY': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+                  case 'ARRIVED': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
                   case 'COLLECTED': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30';
                   case 'COMPLETED': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
                   case 'CANCELLED': return 'bg-rose-500/20 text-rose-400 border-rose-500/30';

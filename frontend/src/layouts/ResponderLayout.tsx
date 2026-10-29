@@ -19,16 +19,16 @@ import { useLiveRefresh } from '../services/liveEvents';
 
 export default function ResponderLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Ensure user is collector/responder
   useEffect(() => {
-    if (user?.role !== 'COLLECTOR') {
+    if (!loading && user && user.role !== 'COLLECTOR') {
       navigate('/login');
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
 
   // Live Refresh for notifications or events to show global toast
   useLiveRefresh(() => {}, [

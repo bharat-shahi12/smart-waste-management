@@ -40,7 +40,7 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   
   if (roles && user && !roles.includes(user.role)) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
   
   return <>{children}</>;
@@ -114,6 +114,9 @@ function AppRoutes() {
         <Route path="report" element={<UserReportIssue />} />
         <Route path="complaints" element={<UserComplaints />} />
       </Route>
+
+      {/* Fallback Catch-All Route */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

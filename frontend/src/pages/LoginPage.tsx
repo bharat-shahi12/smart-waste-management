@@ -57,7 +57,10 @@ export default function LoginPage() {
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input 
+                  id="login-email"
+                  name="email"
                   type="text" 
+                  autoComplete="email"
                   className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008C44]/20 focus:border-[#008C44] transition-all text-[#0F172A] placeholder-gray-400"
                   placeholder="Enter your email"
                   value={email} onChange={(e) => setEmail(e.target.value)} required
@@ -66,11 +69,14 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-bold text-[#0F172A]">Password</label>
+              <label htmlFor="login-password" className="text-sm font-bold text-[#0F172A]">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input 
+                  id="login-password"
+                  name="password"
                   type="password" 
+                  autoComplete="current-password"
                   className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008C44]/20 focus:border-[#008C44] transition-all text-[#0F172A] placeholder-gray-400"
                   placeholder="••••••••"
                   value={password} onChange={(e) => setPassword(e.target.value)} required
@@ -89,6 +95,7 @@ export default function LoginPage() {
             </div>
 
             <button 
+              id="login-submit-btn"
               type="submit" 
               disabled={loading}
               className="w-full bg-[#008C44] hover:bg-[#007036] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-[#008C44]/20 transition-all duration-200 mt-6"
